@@ -23,6 +23,7 @@ USER 1000:1000
 `common` supplies Forgejo Runner, the embedded `acs` CLI, Node 24 for actions,
 certificates, `/data`, and `CMD ["forgejo-runner", "one-job"]`. Keep that command,
 the empty entrypoint, and the writable `/data/home` owned by the runtime UID.
+Deployed Pods pass `one-job --wait`; the runner must support that flag.
 Use `USER 0:0` only for installation in this example; its runtime UID/GID is
 `1000:1000`. Preserve the existing Nix and Buildah images' explicit user settings.
 
@@ -80,6 +81,9 @@ the registry/namespace in local operator JSON, and use separate push credentials
 ```
 
 `images publish` rebuilds before pushing; keep the checked source unchanged.
+For ACS VPC pulls, configure `pull_registry` in operator settings as described in
+the [deployment guide](../acs-deployment-guide.md#setup). Publishing stays on
+`registry`; generated runner manifests use the pull endpoint with the same digest.
 Add this entry under `runners` in local `acs-deployment.json`, using the published
 digest instead of the placeholder:
 
