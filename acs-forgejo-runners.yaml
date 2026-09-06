@@ -49,23 +49,24 @@ items:
                             - --config
                             - /etc/acs-runner/config.yaml
                             - one-job
+                            - --wait
                           command:
                             - forgejo-runner
                           env:
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: runner
                           resources:
                             limits:
                                 cpu: "4"
                                 ephemeral-storage: 30Gi
-                                memory: 8Gi
+                                memory: 16Gi
                             requests:
                                 cpu: "4"
                                 ephemeral-storage: 30Gi
-                                memory: 8Gi
+                                memory: 16Gi
                           securityContext:
                             allowPrivilegeEscalation: false
                             capabilities:
@@ -101,11 +102,30 @@ items:
                               mkdir -p /data/home /data/workspace
                               # Never enable shell tracing: the token must not reach logs.
                               # The reusable token volume is NOT mounted by the workflow container.
-                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                              if ! test -r /run/registration/token || ! test -s /run/registration/token; then
+                                echo "registration token file is missing, unreadable or empty" >&2
+                                exit 1
+                              fi
+                              registration_token=$(cat /run/registration/token)
+                              if timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
                                 --no-interactive --ephemeral \
                                 --instance "$FORGEJO_URL" --name "$POD_NAME" \
-                                --token "$(cat /run/registration/token)"
-                              test -s /data/.runner
+                                --token "$registration_token"; then
+                                unset registration_token
+                              else
+                                registration_status=$?
+                                unset registration_token
+                                if test "$registration_status" -eq 124; then
+                                  echo "registration timed out after 120s; check Forgejo connectivity and the /api/actions/ proxy route" >&2
+                                else
+                                  echo "registration failed (exit $registration_status); workflow container will not start" >&2
+                                fi
+                                exit "$registration_status"
+                              fi
+                              if ! test -s /data/.runner; then
+                                echo "registration returned success without /data/.runner; check runner config and /data permissions" >&2
+                                exit 1
+                              fi
                           command:
                             - /bin/sh
                             - -ec
@@ -118,7 +138,7 @@ items:
                                     fieldPath: metadata.name
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: register
                           resources:
@@ -134,6 +154,7 @@ items:
                                 drop:
                                     - ALL
                             privileged: false
+                          terminationMessagePolicy: FallbackToLogsOnError
                           volumeMounts:
                             - mountPath: /data
                               name: runner-data
@@ -179,7 +200,7 @@ items:
         rollout:
             strategy: gradual
         scalingStrategy:
-            strategy: accurate
+            strategy: default
         successfulJobsHistoryLimit: 1
         triggers:
             - authenticationRef:
@@ -232,12 +253,13 @@ items:
                             - --config
                             - /etc/acs-runner/config.yaml
                             - one-job
+                            - --wait
                           command:
                             - forgejo-runner
                           env:
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: runner
                           resources:
@@ -271,11 +293,30 @@ items:
                               mkdir -p /data/home /data/workspace
                               # Never enable shell tracing: the token must not reach logs.
                               # The reusable token volume is NOT mounted by the workflow container.
-                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                              if ! test -r /run/registration/token || ! test -s /run/registration/token; then
+                                echo "registration token file is missing, unreadable or empty" >&2
+                                exit 1
+                              fi
+                              registration_token=$(cat /run/registration/token)
+                              if timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
                                 --no-interactive --ephemeral \
                                 --instance "$FORGEJO_URL" --name "$POD_NAME" \
-                                --token "$(cat /run/registration/token)"
-                              test -s /data/.runner
+                                --token "$registration_token"; then
+                                unset registration_token
+                              else
+                                registration_status=$?
+                                unset registration_token
+                                if test "$registration_status" -eq 124; then
+                                  echo "registration timed out after 120s; check Forgejo connectivity and the /api/actions/ proxy route" >&2
+                                else
+                                  echo "registration failed (exit $registration_status); workflow container will not start" >&2
+                                fi
+                                exit "$registration_status"
+                              fi
+                              if ! test -s /data/.runner; then
+                                echo "registration returned success without /data/.runner; check runner config and /data permissions" >&2
+                                exit 1
+                              fi
                           command:
                             - /bin/sh
                             - -ec
@@ -288,7 +329,7 @@ items:
                                     fieldPath: metadata.name
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: register
                           resources:
@@ -304,6 +345,7 @@ items:
                                 drop:
                                     - ALL
                             privileged: false
+                          terminationMessagePolicy: FallbackToLogsOnError
                           volumeMounts:
                             - mountPath: /data
                               name: runner-data
@@ -345,7 +387,7 @@ items:
         rollout:
             strategy: gradual
         scalingStrategy:
-            strategy: accurate
+            strategy: default
         successfulJobsHistoryLimit: 1
         triggers:
             - authenticationRef:
@@ -398,12 +440,13 @@ items:
                             - --config
                             - /etc/acs-runner/config.yaml
                             - one-job
+                            - --wait
                           command:
                             - forgejo-runner
                           env:
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: runner
                           resources:
@@ -437,11 +480,30 @@ items:
                               mkdir -p /data/home /data/workspace
                               # Never enable shell tracing: the token must not reach logs.
                               # The reusable token volume is NOT mounted by the workflow container.
-                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                              if ! test -r /run/registration/token || ! test -s /run/registration/token; then
+                                echo "registration token file is missing, unreadable or empty" >&2
+                                exit 1
+                              fi
+                              registration_token=$(cat /run/registration/token)
+                              if timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
                                 --no-interactive --ephemeral \
                                 --instance "$FORGEJO_URL" --name "$POD_NAME" \
-                                --token "$(cat /run/registration/token)"
-                              test -s /data/.runner
+                                --token "$registration_token"; then
+                                unset registration_token
+                              else
+                                registration_status=$?
+                                unset registration_token
+                                if test "$registration_status" -eq 124; then
+                                  echo "registration timed out after 120s; check Forgejo connectivity and the /api/actions/ proxy route" >&2
+                                else
+                                  echo "registration failed (exit $registration_status); workflow container will not start" >&2
+                                fi
+                                exit "$registration_status"
+                              fi
+                              if ! test -s /data/.runner; then
+                                echo "registration returned success without /data/.runner; check runner config and /data permissions" >&2
+                                exit 1
+                              fi
                           command:
                             - /bin/sh
                             - -ec
@@ -454,7 +516,7 @@ items:
                                     fieldPath: metadata.name
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: register
                           resources:
@@ -470,6 +532,7 @@ items:
                                 drop:
                                     - ALL
                             privileged: false
+                          terminationMessagePolicy: FallbackToLogsOnError
                           volumeMounts:
                             - mountPath: /data
                               name: runner-data
@@ -511,7 +574,7 @@ items:
         rollout:
             strategy: gradual
         scalingStrategy:
-            strategy: accurate
+            strategy: default
         successfulJobsHistoryLimit: 1
         triggers:
             - authenticationRef:
@@ -564,12 +627,13 @@ items:
                             - --config
                             - /etc/acs-runner/config.yaml
                             - one-job
+                            - --wait
                           command:
                             - forgejo-runner
                           env:
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: runner
                           resources:
@@ -603,11 +667,30 @@ items:
                               mkdir -p /data/home /data/workspace
                               # Never enable shell tracing: the token must not reach logs.
                               # The reusable token volume is NOT mounted by the workflow container.
-                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                              if ! test -r /run/registration/token || ! test -s /run/registration/token; then
+                                echo "registration token file is missing, unreadable or empty" >&2
+                                exit 1
+                              fi
+                              registration_token=$(cat /run/registration/token)
+                              if timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
                                 --no-interactive --ephemeral \
                                 --instance "$FORGEJO_URL" --name "$POD_NAME" \
-                                --token "$(cat /run/registration/token)"
-                              test -s /data/.runner
+                                --token "$registration_token"; then
+                                unset registration_token
+                              else
+                                registration_status=$?
+                                unset registration_token
+                                if test "$registration_status" -eq 124; then
+                                  echo "registration timed out after 120s; check Forgejo connectivity and the /api/actions/ proxy route" >&2
+                                else
+                                  echo "registration failed (exit $registration_status); workflow container will not start" >&2
+                                fi
+                                exit "$registration_status"
+                              fi
+                              if ! test -s /data/.runner; then
+                                echo "registration returned success without /data/.runner; check runner config and /data permissions" >&2
+                                exit 1
+                              fi
                           command:
                             - /bin/sh
                             - -ec
@@ -620,7 +703,7 @@ items:
                                     fieldPath: metadata.name
                             - name: HOME
                               value: /data/home
-                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
+                          image: crpi-1u9nmrh29ouue3ym-vpc.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
                           imagePullPolicy: IfNotPresent
                           name: register
                           resources:
@@ -636,6 +719,7 @@ items:
                                 drop:
                                     - ALL
                             privileged: false
+                          terminationMessagePolicy: FallbackToLogsOnError
                           volumeMounts:
                             - mountPath: /data
                               name: runner-data
@@ -677,7 +761,7 @@ items:
         rollout:
             strategy: gradual
         scalingStrategy:
-            strategy: accurate
+            strategy: default
         successfulJobsHistoryLimit: 1
         triggers:
             - authenticationRef:
