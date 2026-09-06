@@ -218,6 +218,14 @@ func (a *App) deploy(ctx context.Context, s *Session) error {
 	if p.RunnerNamespace != a.Config.RunnerNamespace || p.KEDANamespace != a.Config.KEDANamespace {
 		return errors.New("bundle namespaces do not match the CLI configuration")
 	}
+	version, e := a.helm(ctx, s, true, "version", "--short")
+	if e != nil {
+		return e
+	}
+	rollbackFlag, e := helmRollbackFlag(string(version))
+	if e != nil {
+		return e
+	}
 	k := func(v ...string) error { _, e := a.kubectl(ctx, s, false, false, nil, v...); return e }
 	if e = k("cluster-info"); e != nil {
 		return e
@@ -257,7 +265,7 @@ func (a *App) deploy(ctx context.Context, s *Session) error {
 			return fmt.Errorf("image-pull Secret %s has incorrect type", name)
 		}
 	}
-	releases, e := a.helm(ctx, s, true, "list", "--namespace", p.KEDANamespace, "--all", "--filter", "^keda$", "--output", "json")
+	releases, e := a.helm(ctx, s, true, helmListArgs("--namespace", p.KEDANamespace, "--filter", "^keda$", "--output", "json")...)
 	if e != nil {
 		return e
 	}
@@ -278,7 +286,7 @@ func (a *App) deploy(ctx context.Context, s *Session) error {
 			return errors.New("refusing to adopt an unrelated KEDA release")
 		}
 	}
-	_, e = a.helm(ctx, s, false, "upgrade", "--install", "keda", filepath.Join(a.Config.Bundle, "acs-keda-2.20.2.tgz"), "--namespace", p.KEDANamespace, "--values", filepath.Join(a.Config.Bundle, "acs-keda-values.yaml"), "--wait", "--atomic", "--timeout", "5m")
+	_, e = a.helm(ctx, s, false, "upgrade", "--install", "keda", filepath.Join(a.Config.Bundle, "acs-keda-2.20.2.tgz"), "--namespace", p.KEDANamespace, "--values", filepath.Join(a.Config.Bundle, "acs-keda-values.yaml"), "--wait", rollbackFlag, "--timeout", "5m")
 	if e != nil {
 		return e
 	}

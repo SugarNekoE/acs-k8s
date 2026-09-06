@@ -409,7 +409,7 @@ func ownedCRD(o Obj) bool {
 		(str(at(o, "metadata", "labels", "app.kubernetes.io/managed-by")) == "Helm" && str(at(o, "metadata", "annotations", "meta.helm.sh/release-name")) == "keda" && str(at(o, "metadata", "annotations", "meta.helm.sh/release-namespace")) == kedaNS)
 }
 func (k *Kind) checkRelease(ctx context.Context) (bool, error) {
-	b, e := k.helm(ctx, true, "list", "-A", "--all", "-o", "json")
+	b, e := k.helm(ctx, true, helmListArgs("-A", "-o", "json")...)
 	if e != nil {
 		return false, e
 	}

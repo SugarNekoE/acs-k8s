@@ -87,6 +87,25 @@ func (a *App) kubectl(ctx context.Context, s *Session, capture, sensitive bool, 
 func (a *App) helm(ctx context.Context, s *Session, capture bool, args ...string) ([]byte, error) {
 	return a.call(ctx, append([]string{"helm", "--kube-context", a.Config.Context}, args...), nil, capture, false, s.Env)
 }
+
+func helmListArgs(args ...string) []string {
+	// Helm 4 removed --all. Explicit status filters cover all releases on both
+	// Helm 3 and 4, including failed/pending releases needed for ownership checks.
+	return append([]string{"list", "--deployed", "--failed", "--pending", "--uninstalled", "--superseded", "--uninstalling"}, args...)
+}
+
+func helmRollbackFlag(version string) (string, error) {
+	version = strings.TrimSpace(version)
+	switch {
+	case strings.HasPrefix(version, "v3."):
+		return "--atomic", nil
+	case strings.HasPrefix(version, "v4."):
+		return "--rollback-on-failure", nil
+	default:
+		return "", fmt.Errorf("unsupported Helm version %q; Helm 3 or 4 is required", version)
+	}
+}
+
 func secretObjects(c Credentials, cfg Config) ([]byte, error) {
 	fields := map[string]string{"forgejo.registration-token": c.Forgejo.Registration, "forgejo.scaler-token": c.Forgejo.Scaler, "acr.address": c.ACR.Address, "acr.namespace": c.ACR.Namespace, "acr.username": c.ACR.Username, "acr.password": c.ACR.Password}
 	for field, value := range fields {

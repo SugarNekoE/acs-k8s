@@ -105,6 +105,9 @@ func TestDeployReadinessFailureReportsDiagnosticsAndStillFails(t *testing.T) {
 	mustWrite(t, filepath.Join(a.Config.Bundle, "acs-deploy-plan.json"), string(encoded(t, p)))
 	readinessErr := errors.New("readiness timeout")
 	r.run = func(in Invocation) ([]byte, error) {
+		if in.Args[0] == "helm" && slices.Contains(in.Args, "version") {
+			return []byte("v4.2.4"), nil
+		}
 		if slices.Contains(in.Args, "secret") {
 			return []byte("present"), nil
 		}

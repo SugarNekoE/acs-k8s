@@ -317,6 +317,9 @@ func TestDeploymentGuardsAndOrdering(t *testing.T) {
 					t.Fatal("wrong context")
 				}
 				args := strings.Join(in.Args, " ")
+				if in.Args[0] == "helm" && slices.Contains(in.Args, "version") {
+					return []byte("v4.2.4"), nil
+				}
 				if strings.Contains(args, "get secret") {
 					if !in.Sensitive {
 						t.Fatal("secret output not suppressed")
@@ -390,6 +393,95 @@ func TestDeploymentGuardsAndOrdering(t *testing.T) {
 	}
 }
 
+func TestDeployHelmVersionCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		version, rollback string
+		versionError      bool
+	}{
+		{version: "v3.20.2+build\n", rollback: "--atomic"},
+		{version: "v4.2.4\n", rollback: "--rollback-on-failure"},
+		{version: "v5.0.0"},
+		{version: ""},
+		{version: "version command failed", versionError: true},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			a, r := testApp(t)
+			p := DeployPlan{Version: 1, RunnerNamespace: a.Config.RunnerNamespace, KEDANamespace: a.Config.KEDANamespace, RequiredSecrets: []SecretRef{{"scaler", "token"}}, ScaledJobs: []string{"acs-runner-go"}}
+			mustWrite(t, filepath.Join(a.Config.Bundle, "acs-forgejo-runners.yaml"), "{}")
+			mustWrite(t, filepath.Join(a.Config.Bundle, "acs-deploy-plan.json"), string(encoded(t, p)))
+			r.run = func(in Invocation) ([]byte, error) {
+				if slices.Contains(in.Args, "version") {
+					if tc.versionError {
+						return nil, errors.New("version failed")
+					}
+					return []byte(tc.version), nil
+				}
+				if slices.Contains(in.Args, "secret") {
+					return []byte("present"), nil
+				}
+				if slices.Contains(in.Args, "list") {
+					if slices.Contains(in.Args, "--all") {
+						t.Fatal("Helm 4 rejects --all")
+					}
+					for _, flag := range []string{"--deployed", "--failed", "--pending", "--uninstalled", "--superseded", "--uninstalling"} {
+						if !slices.Contains(in.Args, flag) {
+							t.Fatalf("ownership check omits %s releases", flag)
+						}
+					}
+					return []byte(`[{"name":"keda","status":"failed"}]`), nil
+				}
+				if in.Args[0] == "helm" && slices.Contains(in.Args, "get") {
+					return encoded(t, Obj{"acsForgejoManaged": true, "watchNamespace": a.Config.RunnerNamespace}), nil
+				}
+				return nil, nil
+			}
+			err := a.deploy(t.Context(), &Session{})
+			if tc.rollback == "" {
+				if err == nil || len(r.calls) != 1 || !slices.Contains(r.calls[0].Args, "version") {
+					t.Fatal("unsupported/unavailable Helm reached cluster operations")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			upgraded := false
+			for _, call := range r.calls {
+				if !slices.Contains(call.Args, "upgrade") {
+					continue
+				}
+				upgraded = true
+				if !slices.Contains(call.Args, tc.rollback) || !slices.Contains(call.Args, "--wait") || (slices.Contains(call.Args, "--atomic") == slices.Contains(call.Args, "--rollback-on-failure")) {
+					t.Fatalf("wrong rollback/wait flags for %s: %v", tc.version, call.Args)
+				}
+			}
+			if !upgraded {
+				t.Fatal("upgrade was not executed")
+			}
+		})
+	}
+}
+
+func TestInstalledHelmAcceptsOperationalFlags(t *testing.T) {
+	r := OSRunner{Out: io.Discard, Err: io.Discard}
+	run := func(args ...string) []byte {
+		t.Helper()
+		out, err := r.Run(t.Context(), Invocation{Args: append([]string{"helm"}, args...), Capture: true, Env: map[string]string{"KUBECONFIG": "/dev/null"}})
+		if err != nil {
+			t.Fatalf("Helm rejected operational flags %v: %v", args, err)
+		}
+		return out
+	}
+	flag, err := helmRollbackFlag(string(run("version", "--short")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Help parses flags without connecting to a cluster or changing releases.
+	run(helmListArgs("--namespace", "keda", "--filter", "^keda$", "--output", "json", "--help")...)
+	run(helmListArgs("-A", "-o", "json", "--help")...)
+	run("upgrade", "--install", "keda", "assets/acs-keda-2.20.2.tgz", "--wait", flag, "--timeout", "5m", "--help")
+}
+
 func TestKindOwnershipFailsBeforeDeletion(t *testing.T) {
 	for _, scenario := range []string{"foreign-namespace", "foreign-release", "foreign-instance", "list-error", "owned"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -409,6 +501,9 @@ func TestKindOwnershipFailsBeforeDeletion(t *testing.T) {
 					return encoded(t, o), nil
 				}
 				if in.Args[0] == "helm" && slices.Contains(in.Args, "list") {
+					if slices.Contains(in.Args, "--all") || !slices.Contains(in.Args, "--pending") || !slices.Contains(in.Args, "--failed") {
+						t.Fatal("Kind release check lost Helm compatibility or ownership coverage")
+					}
 					if scenario == "foreign-release" {
 						return []byte(`[{"chart":"keda-2.20.2","namespace":"other"}]`), nil
 					}
