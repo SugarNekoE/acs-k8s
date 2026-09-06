@@ -1,5 +1,6 @@
 {
   "registry": "",
+  "pull_registry": "",
   "registry_namespace": "forgejo",
   "image_system": "x86_64-linux",
   "context": "",
