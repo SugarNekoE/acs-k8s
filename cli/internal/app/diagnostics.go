@@ -38,21 +38,17 @@ func diagnosticRedactor(c Credentials) (*strings.Replacer, error) {
 	return strings.NewReplacer(pairs...), nil
 }
 
-func (a *App) clusterStatus(ctx context.Context, s *Session) error {
-	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+type diagnosticCheck struct {
+	title string
+	args  []string
+}
+
+func (a *App) runDiagnostics(ctx context.Context, s *Session, checks []diagnosticCheck) error {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	redactor, err := diagnosticRedactor(s.Credentials)
 	if err != nil {
 		return err
-	}
-	checks := []struct {
-		title string
-		args  []string
-	}{
-		{"KEDA pods", []string{"-n", a.Config.KEDANamespace, "get", "pods", "-o", "wide"}},
-		{"Runner ScaledJobs", []string{"-n", a.Config.RunnerNamespace, "get", "scaledjobs"}},
-		{"ScaledJob conditions and events", []string{"-n", a.Config.RunnerNamespace, "describe", "scaledjobs"}},
-		{"KEDA operator logs (last 10 minutes, up to 100 lines)", []string{"-n", a.Config.KEDANamespace, "logs", "deployment/keda-operator", "--since=10m", "--tail=100", "--pod-running-timeout=10s"}},
 	}
 	var failures []error
 	for _, check := range checks {
@@ -67,4 +63,25 @@ func (a *App) clusterStatus(ctx context.Context, s *Session) error {
 		}
 	}
 	return errors.Join(failures...)
+}
+
+func (a *App) clusterStatus(ctx context.Context, s *Session) error {
+	return a.runDiagnostics(ctx, s, []diagnosticCheck{
+		{"KEDA pods", []string{"-n", a.Config.KEDANamespace, "get", "pods", "-o", "wide"}},
+		{"Runner ScaledJobs", []string{"-n", a.Config.RunnerNamespace, "get", "scaledjobs"}},
+		{"ScaledJob conditions and events", []string{"-n", a.Config.RunnerNamespace, "describe", "scaledjobs"}},
+		{"Runner Jobs", []string{"-n", a.Config.RunnerNamespace, "get", "jobs", "-l", "scaledjob.keda.sh/name", "-o", "wide"}},
+		{"Runner pods and init-container states", []string{"-n", a.Config.RunnerNamespace, "get", "pods", "-l", "app.kubernetes.io/name", "-o", "wide"}},
+		{"Runner pod conditions, init failures and events", []string{"-n", a.Config.RunnerNamespace, "describe", "pods", "-l", "app.kubernetes.io/name"}},
+		{"KEDA operator logs (last 10 minutes, up to 100 lines)", []string{"-n", a.Config.KEDANamespace, "logs", "deployment/keda-operator", "--since=10m", "--tail=100", "--pod-running-timeout=10s"}},
+	})
+}
+
+func (a *App) podLogs(ctx context.Context, s *Session, pod string) error {
+	return a.runDiagnostics(ctx, s, []diagnosticCheck{
+		{"Pod conditions, init-container state and events", []string{"-n", a.Config.RunnerNamespace, "describe", "pod", pod}},
+		{"Registration init-container logs", []string{"-n", a.Config.RunnerNamespace, "logs", pod, "-c", "register", "--tail=100", "--pod-running-timeout=5s"}},
+		{"Workflow container logs", []string{"-n", a.Config.RunnerNamespace, "logs", pod, "-c", "runner", "--tail=100", "--pod-running-timeout=5s"}},
+		{"KEDA operator logs (last 10 minutes, up to 100 lines)", []string{"-n", a.Config.KEDANamespace, "logs", "deployment/keda-operator", "--since=10m", "--tail=100", "--pod-running-timeout=5s"}},
+	})
 }

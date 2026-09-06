@@ -191,8 +191,8 @@ func (k *Kind) capturePods(ctx context.Context, r *KindReport) error {
 				return errors.New("reusable token mounted in workflow container")
 			}
 		}
-		if !reflect.DeepEqual(arr(main["args"]), []any{"--config", "/etc/acs-runner/config.yaml", "one-job"}) {
-			return errors.New("runner is not using one-job")
+		if !reflect.DeepEqual(arr(main["args"]), []any{"--config", "/etc/acs-runner/config.yaml", "one-job", "--wait"}) {
+			return errors.New("runner is not using one-job --wait")
 		}
 		name := str(at(p, "metadata", "name"))
 		r.Pods[name] = Obj{"uid": at(p, "metadata", "uid"), "phase": at(p, "status", "phase"), "resources": main["resources"], "security": security, "containers": at(p, "status", "containerStatuses")}

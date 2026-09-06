@@ -97,11 +97,14 @@ func secretObjects(c Credentials, cfg Config) ([]byte, error) {
 	if c.ACR.Address != cfg.Registry || c.ACR.Namespace != cfg.RegistryNamespace {
 		return nil, errors.New("SOPS ACR address/namespace does not match the public configuration")
 	}
-	if strings.ContainsAny(c.ACR.Address, "/ @\t\n") {
+	if !validRegistryHost(c.ACR.Address) {
 		return nil, errors.New("acr.address must be a registry hostname")
 	}
+	if !validRegistryHost(cfg.pullRegistry()) {
+		return nil, errors.New("pull_registry must be a registry hostname")
+	}
 	auth := base64.StdEncoding.EncodeToString([]byte(c.ACR.Username + ":" + c.ACR.Password))
-	docker, err := json.Marshal(map[string]any{"auths": map[string]any{c.ACR.Address: map[string]string{"username": c.ACR.Username, "password": c.ACR.Password, "auth": auth}}})
+	docker, err := json.Marshal(map[string]any{"auths": map[string]any{cfg.pullRegistry(): map[string]string{"username": c.ACR.Username, "password": c.ACR.Password, "auth": auth}}})
 	if err != nil {
 		return nil, err
 	}

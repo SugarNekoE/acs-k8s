@@ -184,15 +184,7 @@ func (a *App) clusterAction(ctx context.Context, s *Session, args []string) erro
 	case "watch":
 		return k("-n", a.Config.RunnerNamespace, "get", "jobs,pods", "-w")
 	case "logs":
-		for _, c := range []string{"register", "runner"} {
-			if e := k("-n", a.Config.RunnerNamespace, "logs", args[1], "-c", c); e != nil {
-				return e
-			}
-		}
-		if e := k("-n", a.Config.RunnerNamespace, "describe", "pod", args[1]); e != nil {
-			return e
-		}
-		return k("-n", a.Config.KEDANamespace, "logs", "deployment/keda-operator", "--tail=100")
+		return a.podLogs(ctx, s, args[1])
 	}
 	return errors.New("unknown cluster action")
 }

@@ -95,6 +95,9 @@ func validateRunnerSecurity(resources []Obj) error {
 			}
 		case "ScaledJob":
 			spec := obj(o["spec"])
+			if at(spec, "scalingStrategy", "strategy") != "default" {
+				return errors.New("scaling must use the default strategy because the Forgejo queue includes running tasks")
+			}
 			pod := obj(at(spec, "jobTargetRef", "template", "spec"))
 			if pod["automountServiceAccountToken"] != false || pod["hostNetwork"] == true || pod["hostPID"] == true {
 				return errors.New("runner pod violates API-token or host isolation")
@@ -103,8 +106,11 @@ func validateRunnerSecurity(resources []Obj) error {
 				return errors.New("runner requires one workflow and one registration container")
 			}
 			main, init := obj(arr(pod["containers"])[0]), obj(arr(pod["initContainers"])[0])
-			if !reflect.DeepEqual(main["command"], []any{"forgejo-runner"}) || !reflect.DeepEqual(main["args"], []any{"--config", "/etc/acs-runner/config.yaml", "one-job"}) {
-				return errors.New("runner must execute one-job")
+			if init["name"] != "register" || !reflect.DeepEqual(init["command"], []any{"/bin/sh", "-ec"}) || !reflect.DeepEqual(init["args"], []any{registrationScript}) {
+				return errors.New("registration init must complete the guarded ephemeral registration before the workflow starts")
+			}
+			if !reflect.DeepEqual(main["command"], []any{"forgejo-runner"}) || !reflect.DeepEqual(main["args"], []any{"--config", "/etc/acs-runner/config.yaml", "one-job", "--wait"}) {
+				return errors.New("runner must execute one-job --wait")
 			}
 			if main["image"] != init["image"] {
 				return errors.New("registration/workflow images differ")

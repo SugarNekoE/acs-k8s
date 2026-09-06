@@ -88,6 +88,7 @@ func (a *App) imageCheck(ctx context.Context, archive, pool string) (result erro
 		want string
 	}{
 		{[]string{"forgejo-runner", "one-job", "--help"}, "Run only one job"},
+		{[]string{"forgejo-runner", "one-job", "--help"}, "--wait"},
 		{[]string{"forgejo-runner", "register", "--help"}, "--ephemeral"},
 	} {
 		b, err = run(true, item.args...)

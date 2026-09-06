@@ -27,13 +27,13 @@ func TestStatusDiagnosesAllPoolsAndRedactsCredentials(t *testing.T) {
 	if err := a.clusterAction(t.Context(), &Session{Credentials: c, Env: map[string]string{"KUBECONFIG": "private-config"}}, []string{"status"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(r.calls) != 4 {
+	if len(r.calls) != 7 {
 		t.Fatalf("diagnostic calls: %d", len(r.calls))
 	}
 	if !slices.Contains(r.calls[2].Args, "describe") || r.calls[2].Args[len(r.calls[2].Args)-1] != "scaledjobs" {
 		t.Fatal("status does not describe all pools")
 	}
-	if !slices.Contains(r.calls[3].Args, "deployment/keda-operator") {
+	if !slices.Contains(r.calls[6].Args, "deployment/keda-operator") {
 		t.Fatal("missing operator logs")
 	}
 	text := output.String()
@@ -57,8 +57,42 @@ func TestStatusContinuesAfterDiagnosticFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "KEDA pods") || strings.Contains(err.Error(), "synthetic-private-error") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(r.calls) != 4 {
+	if len(r.calls) != 7 {
 		t.Fatal("stopped collecting evidence after one failure")
+	}
+}
+
+func TestPodLogsContinueWhenContainersNeverStarted(t *testing.T) {
+	a, r := testApp(t)
+	var output bytes.Buffer
+	a.Out = &output
+	c := credentials()
+	s := &Session{Credentials: c, Env: map[string]string{"KUBECONFIG": "private-config"}}
+	r.run = func(in Invocation) ([]byte, error) {
+		if !in.Capture || !in.Sensitive || in.Env["KUBECONFIG"] != "private-config" || in.Args[2] != "test-acs" {
+			t.Fatal("pod diagnostics lost private capture or explicit cluster session")
+		}
+		if slices.Contains(in.Args, "describe") {
+			return []byte("register Waiting: ImagePullBackOff " + c.ACR.Password), nil
+		}
+		if slices.Contains(in.Args, "register") || slices.Contains(in.Args, "runner") {
+			return nil, errors.New("container has not started: " + c.Forgejo.Registration)
+		}
+		return []byte("operator evidence"), nil
+	}
+	err := a.clusterAction(t.Context(), s, []string{"logs", "acs-runner-go-example"})
+	if err == nil || !strings.Contains(err.Error(), "Registration init-container logs") || !strings.Contains(err.Error(), "Workflow container logs") {
+		t.Fatalf("container failures not retained: %v", err)
+	}
+	if len(r.calls) != 4 || !slices.Contains(r.calls[0].Args, "describe") || !slices.Contains(r.calls[3].Args, "deployment/keda-operator") {
+		t.Fatal("missing init state or diagnostics stopped at unavailable container logs")
+	}
+	text := output.String() + err.Error()
+	if !strings.Contains(text, "ImagePullBackOff") || !strings.Contains(text, "operator evidence") || !strings.Contains(text, "[REDACTED]") {
+		t.Fatal("lost failure evidence")
+	}
+	if strings.Contains(text, c.ACR.Password) || strings.Contains(text, c.Forgejo.Registration) {
+		t.Fatal("pod diagnostics exposed credentials")
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,7 +44,8 @@ Usage: acs [global options] COMMAND
 
 Global options (may appear before or after commands):
   --repo PATH, --config FILE, --context NAME, --system SYSTEM,
-  --output-dir PATH, --bundle PATH, --sops-file FILE, --deployment FILE
+  --output-dir PATH, --bundle PATH, --sops-file FILE, --deployment FILE,
+  --pull-registry HOST
 
 Defaults: acs-config.json, then environment overrides, then flags.
 Paths use --repo, the --config directory, or the nearest ACS directory/current directory.
@@ -55,6 +57,7 @@ Builds never deploy. No sudo. Secrets are never printed.
 
 type Config struct {
 	Registry          string `json:"registry"`
+	PullRegistry      string `json:"pull_registry,omitempty"`
 	RegistryNamespace string `json:"registry_namespace"`
 	System            string `json:"image_system"`
 	Context           string `json:"context"`
@@ -181,7 +184,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, stderr io.Writer
 func parseArgs(args []string) (map[string]string, []string, error) {
 	flags := map[string]string{}
 	var command []string
-	allowed := map[string]bool{"repo": true, "config": true, "context": true, "system": true, "output-dir": true, "bundle": true, "sops-file": true, "deployment": true}
+	allowed := map[string]bool{"repo": true, "config": true, "context": true, "system": true, "output-dir": true, "bundle": true, "sops-file": true, "deployment": true, "pull-registry": true}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--help" || arg == "-h" {
@@ -283,16 +286,19 @@ func loadConfig(root string, flags map[string]string) (Config, error) {
 			}
 		}
 	}
-	overrides := map[string]*string{"ACR": &c.Registry, "ACR_NAMESPACE": &c.RegistryNamespace, "IMAGE_SYSTEM": &c.System, "CTX": &c.Context, "ACS_SOPS_FILE": &c.SOPSFile, "ACS_DEPLOYMENT_FILE": &c.DeploymentFile, "ACS_OUTPUT_DIR": &c.OutputDir, "ACS_BUNDLE": &c.Bundle, "ACS_RUNNER_NAMESPACE": &c.RunnerNamespace, "ACS_KEDA_NAMESPACE": &c.KEDANamespace}
+	overrides := map[string]*string{"ACR": &c.Registry, "ACS_PULL_REGISTRY": &c.PullRegistry, "ACR_NAMESPACE": &c.RegistryNamespace, "IMAGE_SYSTEM": &c.System, "CTX": &c.Context, "ACS_SOPS_FILE": &c.SOPSFile, "ACS_DEPLOYMENT_FILE": &c.DeploymentFile, "ACS_OUTPUT_DIR": &c.OutputDir, "ACS_BUNDLE": &c.Bundle, "ACS_RUNNER_NAMESPACE": &c.RunnerNamespace, "ACS_KEDA_NAMESPACE": &c.KEDANamespace}
 	for key, p := range overrides {
 		if v := os.Getenv(key); v != "" {
 			*p = v
 		}
 	}
-	for key, p := range map[string]*string{"context": &c.Context, "system": &c.System, "output-dir": &c.OutputDir, "bundle": &c.Bundle, "sops-file": &c.SOPSFile, "deployment": &c.DeploymentFile} {
+	for key, p := range map[string]*string{"context": &c.Context, "system": &c.System, "output-dir": &c.OutputDir, "bundle": &c.Bundle, "sops-file": &c.SOPSFile, "deployment": &c.DeploymentFile, "pull-registry": &c.PullRegistry} {
 		if v := flags[key]; v != "" {
 			*p = v
 		}
+	}
+	if c.PullRegistry != "" && !validRegistryHost(c.PullRegistry) {
+		return c, errors.New("pull_registry must be a registry hostname with optional port, without a scheme or path")
 	}
 	if c.OutputDir == "" {
 		base := os.Getenv("XDG_STATE_HOME")
@@ -335,10 +341,28 @@ func (a *App) registry() error {
 	if a.Config.Registry == "" || a.Config.RegistryNamespace == "" {
 		return errors.New("configure registry and registry_namespace")
 	}
-	if strings.ContainsAny(a.Config.Registry, "/ @\t\n") || strings.ContainsAny(a.Config.RegistryNamespace, "/ \t\n") {
+	if !validRegistryHost(a.Config.Registry) || strings.ContainsAny(a.Config.RegistryNamespace, "/ \t\r\n") {
 		return errors.New("invalid registry hostname or namespace")
 	}
+	if !validRegistryHost(a.Config.pullRegistry()) {
+		return errors.New("invalid pull_registry hostname")
+	}
 	return nil
+}
+
+func (c Config) pullRegistry() string {
+	if c.PullRegistry != "" {
+		return c.PullRegistry
+	}
+	return c.Registry
+}
+
+func validRegistryHost(host string) bool {
+	if host == "" || strings.HasPrefix(host, "-") || strings.ContainsAny(host, "/\\ @\t\r\n?#") {
+		return false
+	}
+	u, err := url.Parse("https://" + host)
+	return err == nil && u.Host == host && u.Hostname() != ""
 }
 
 func (a *App) Dispatch(ctx context.Context, args []string) error {

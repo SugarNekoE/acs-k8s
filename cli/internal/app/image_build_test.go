@@ -89,6 +89,32 @@ func TestImagesSeparateBuildPublish(t *testing.T) {
 	}
 }
 
+func TestRegistryOperationsKeepPublicEndpoint(t *testing.T) {
+	a, r := testApp(t)
+	a.Config.PullRegistry = "registry-vpc.invalid"
+	imageSourceFixture(t, a.Root)
+	r.run = func(in Invocation) ([]byte, error) { return fakeImageBuild(t, in) }
+	for _, command := range [][]string{{"registry", "login"}, {"registry", "digests"}, {"images", "publish", "go"}} {
+		if err := a.Dispatch(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skopeoCalls := 0
+	for _, call := range r.calls {
+		if call.Args[0] != "skopeo" {
+			continue
+		}
+		skopeoCalls++
+		args := strings.Join(call.Args, " ")
+		if strings.Contains(args, a.Config.PullRegistry) || !strings.Contains(args, a.Config.Registry) {
+			t.Fatal("publishing/login/digests used the pull endpoint")
+		}
+	}
+	if skopeoCalls != len(pools)+2 {
+		t.Fatal("missing registry operation coverage")
+	}
+}
+
 func TestImageBuildFailuresPreserveExistingArchive(t *testing.T) {
 	for _, failure := range []string{"build", "push", "image-id"} {
 		t.Run(failure, func(t *testing.T) {
@@ -184,7 +210,7 @@ func TestImageCheckUsesNativeRuntimeAndCleansUp(t *testing.T) {
 				if slices.Contains(in.Args, "id") || slices.Contains(in.Args, "stat") {
 					return []byte("1000\n"), nil
 				}
-				return []byte("Run only one job --ephemeral"), nil
+				return []byte("Run only one job --wait --ephemeral"), nil
 			}
 			return nil, nil
 		}

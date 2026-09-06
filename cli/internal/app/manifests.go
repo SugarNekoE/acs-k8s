@@ -12,11 +12,30 @@ const registrationScript = `umask 077
 mkdir -p /data/home /data/workspace
 # Never enable shell tracing: the token must not reach logs.
 # The reusable token volume is NOT mounted by the workflow container.
-timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+if ! test -r /run/registration/token || ! test -s /run/registration/token; then
+  echo "registration token file is missing, unreadable or empty" >&2
+  exit 1
+fi
+registration_token=$(cat /run/registration/token)
+if timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
   --no-interactive --ephemeral \
   --instance "$FORGEJO_URL" --name "$POD_NAME" \
-  --token "$(cat /run/registration/token)"
-test -s /data/.runner
+  --token "$registration_token"; then
+  unset registration_token
+else
+  registration_status=$?
+  unset registration_token
+  if test "$registration_status" -eq 124; then
+    echo "registration timed out after 120s; check Forgejo connectivity and the /api/actions/ proxy route" >&2
+  else
+    echo "registration failed (exit $registration_status); workflow container will not start" >&2
+  fi
+  exit "$registration_status"
+fi
+if ! test -s /data/.runner; then
+  echo "registration returned success without /data/.runner; check runner config and /data permissions" >&2
+  exit 1
+fi
 `
 
 type Manifests struct {
@@ -102,10 +121,10 @@ func (c DeploymentConfig) render() (Manifests, error) {
 		}
 		m.Resources = append(m.Resources, object("v1", "ConfigMap", configName, c.Namespace, Obj{"data": Obj{"config.yaml": string(configJSON)}}),
 			object("keda.sh/v1alpha1", "TriggerAuthentication", resourceName, c.Namespace, Obj{"spec": Obj{"secretTargetRef": []any{Obj{"parameter": "token", "name": r.ScalerSecret.Name, "key": r.ScalerSecret.Key}}}}))
-		init := Obj{"name": "register", "image": r.Image, "imagePullPolicy": "IfNotPresent", "securityContext": restrictedSecurity(), "resources": Obj{"requests": Obj{"cpu": "100m", "memory": "128Mi"}, "limits": Obj{"cpu": "1", "memory": "256Mi"}}, "workingDir": "/data", "command": []string{"/bin/sh", "-ec"}, "args": []string{registrationScript},
+		init := Obj{"name": "register", "image": r.Image, "imagePullPolicy": "IfNotPresent", "terminationMessagePolicy": "FallbackToLogsOnError", "securityContext": restrictedSecurity(), "resources": Obj{"requests": Obj{"cpu": "100m", "memory": "128Mi"}, "limits": Obj{"cpu": "1", "memory": "256Mi"}}, "workingDir": "/data", "command": []string{"/bin/sh", "-ec"}, "args": []string{registrationScript},
 			"env":          []any{Obj{"name": "FORGEJO_URL", "value": c.URL}, Obj{"name": "POD_NAME", "valueFrom": Obj{"fieldRef": Obj{"fieldPath": "metadata.name"}}}, Obj{"name": "HOME", "value": "/data/home"}},
 			"volumeMounts": append(baseMounts(), Obj{"name": "registration-token", "mountPath": "/run/registration", "readOnly": true})}
-		main := Obj{"name": "runner", "image": r.Image, "resources": r.Resources, "imagePullPolicy": "IfNotPresent", "securityContext": restrictedSecurity(), "workingDir": "/data", "command": []string{"forgejo-runner"}, "args": []string{"--config", "/etc/acs-runner/config.yaml", "one-job"}, "env": []any{Obj{"name": "HOME", "value": "/data/home"}}, "volumeMounts": baseMounts()}
+		main := Obj{"name": "runner", "image": r.Image, "resources": r.Resources, "imagePullPolicy": "IfNotPresent", "securityContext": restrictedSecurity(), "workingDir": "/data", "command": []string{"forgejo-runner"}, "args": []string{"--config", "/etc/acs-runner/config.yaml", "one-job", "--wait"}, "env": []any{Obj{"name": "HOME", "value": "/data/home"}}, "volumeMounts": baseMounts()}
 		volumes := []any{Obj{"name": "runner-data", "emptyDir": Obj{}}, Obj{"name": "runner-config", "configMap": Obj{"name": configName}}, Obj{"name": "registration-token", "secret": Obj{"secretName": r.RegistrationSecret.Name, "defaultMode": 288, "items": []any{Obj{"key": r.RegistrationSecret.Key, "path": "token"}}}}}
 		if r.Buildah {
 			obj(main["securityContext"])["capabilities"] = Obj{"drop": []string{"ALL"}, "add": []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETGID", "SETUID", "SETFCAP", "SYS_CHROOT"}}
@@ -139,7 +158,9 @@ func (c DeploymentConfig) render() (Manifests, error) {
 			trigger["owner"] = r.Scope.Owner
 			trigger["repo"] = r.Scope.Repo
 		}
-		spec := Obj{"minReplicaCount": 0, "maxReplicaCount": r.MaxReplicas, "pollingInterval": r.PollingInterval, "successfulJobsHistoryLimit": 1, "failedJobsHistoryLimit": 3, "rollout": Obj{"strategy": "gradual"}, "scalingStrategy": Obj{"strategy": "accurate"},
+		// Forgejo's queue endpoint includes waiting AND running tasks. Subtract
+		// every unfinished Kubernetes Job, not just pods that are still pending.
+		spec := Obj{"minReplicaCount": 0, "maxReplicaCount": r.MaxReplicas, "pollingInterval": r.PollingInterval, "successfulJobsHistoryLimit": 1, "failedJobsHistoryLimit": 3, "rollout": Obj{"strategy": "gradual"}, "scalingStrategy": Obj{"strategy": "default"},
 			"jobTargetRef": Obj{"parallelism": 1, "completions": 1, "backoffLimit": 0, "activeDeadlineSeconds": r.ActiveDeadlineSeconds, "ttlSecondsAfterFinished": r.TTLSecondsAfterFinished, "template": Obj{"metadata": Obj{"labels": labels, "annotations": annotations}, "spec": pod}},
 			"triggers":     []any{Obj{"type": "forgejo-runner", "metadata": trigger, "authenticationRef": Obj{"name": resourceName}}}}
 		m.Resources = append(m.Resources, object("keda.sh/v1alpha1", "ScaledJob", resourceName, c.Namespace, Obj{"spec": spec}))

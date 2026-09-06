@@ -63,7 +63,25 @@ func pinnedChart() ([]byte, error) {
 	}
 	return chart, nil
 }
-func (a *App) deployment() (DeploymentConfig, error) { return loadDeployment(a.Config.DeploymentFile) }
+func (a *App) deployment() (DeploymentConfig, error) {
+	c, err := loadDeployment(a.Config.DeploymentFile)
+	if err != nil || a.Config.PullRegistry == "" {
+		return c, err
+	}
+	if err := a.registry(); err != nil {
+		return c, err
+	}
+	// Replace only the registry host. Tags, digests, namespaces and external
+	// registries remain intact; the operator's deployment file is never changed.
+	prefix := a.Config.Registry + "/"
+	for name, runner := range c.Runners {
+		if strings.HasPrefix(runner.Image, prefix) {
+			runner.Image = a.Config.pullRegistry() + "/" + strings.TrimPrefix(runner.Image, prefix)
+			c.Runners[name] = runner
+		}
+	}
+	return c, nil
+}
 
 // writeBundle creates only local artifacts. Helm rendering never contacts a cluster.
 func (a *App) writeBundle(ctx context.Context, c DeploymentConfig, dir string) (result error) {

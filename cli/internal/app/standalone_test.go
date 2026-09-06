@@ -41,7 +41,7 @@ func TestStandaloneRootDiscovery(t *testing.T) {
 }
 
 func TestStandaloneConfigDefaults(t *testing.T) {
-	for _, key := range []string{"ACR", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_DEPLOYMENT_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
+	for _, key := range []string{"ACR", "ACS_PULL_REGISTRY", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_DEPLOYMENT_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
 		t.Setenv(key, "")
 	}
 	root := t.TempDir()
@@ -69,7 +69,7 @@ func TestStandaloneConfigDefaults(t *testing.T) {
 }
 
 func TestInstalledCLIWithoutCheckout(t *testing.T) {
-	for _, key := range []string{"ACR", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_DEPLOYMENT_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
+	for _, key := range []string{"ACR", "ACS_PULL_REGISTRY", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_DEPLOYMENT_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
 		t.Setenv(key, "")
 	}
 	out := t.TempDir()

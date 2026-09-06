@@ -82,7 +82,7 @@ func TestArguments(t *testing.T) {
 	}
 }
 func TestConfigPrecedence(t *testing.T) {
-	for _, key := range []string{"ACR", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
+	for _, key := range []string{"ACR", "ACS_PULL_REGISTRY", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
 		t.Setenv(key, "")
 	}
 	root := t.TempDir()
@@ -101,6 +101,94 @@ func TestConfigPrecedence(t *testing.T) {
 	mustWrite(t, path, `{"password":"not-allowed"}`)
 	if _, err = loadConfig(root, map[string]string{"config": path}); err == nil {
 		t.Fatal("accepted secret/unknown config field")
+	}
+}
+
+func TestPullRegistryConfig(t *testing.T) {
+	t.Setenv("ACS_PULL_REGISTRY", "")
+	t.Setenv("ACR", "public.invalid")
+	root := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", root)
+	path := filepath.Join(root, "acs-config.json")
+	mustWrite(t, path, `{"pull_registry":"file-vpc.invalid"}`)
+	c, err := loadConfig(root, nil)
+	if err != nil || c.PullRegistry != "file-vpc.invalid" || c.Registry != "public.invalid" {
+		t.Fatalf("file pull registry: %+v, %v", c, err)
+	}
+	t.Setenv("ACS_PULL_REGISTRY", "env-vpc.invalid")
+	c, err = loadConfig(root, nil)
+	if err != nil || c.PullRegistry != "env-vpc.invalid" {
+		t.Fatalf("environment pull registry: %+v, %v", c, err)
+	}
+	flags, _, err := parseArgs([]string{"--pull-registry", "flag-vpc.invalid", "config", "show"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err = loadConfig(root, flags)
+	if err != nil || c.PullRegistry != "flag-vpc.invalid" || c.Registry != "public.invalid" {
+		t.Fatalf("flag pull registry: %+v, %v", c, err)
+	}
+	t.Setenv("ACS_PULL_REGISTRY", "")
+	mustWrite(t, path, `{}`)
+	c, err = loadConfig(root, nil)
+	if err != nil || c.pullRegistry() != c.Registry {
+		t.Fatalf("default pull registry: %+v, %v", c, err)
+	}
+	for _, host := range []string{"https://vpc.invalid", "vpc.invalid/path", "user@vpc.invalid", "vpc.invalid?query", "vpc.invalid#fragment", "vpc.invalid\r", "--invalid"} {
+		if _, err := loadConfig(root, map[string]string{"pull-registry": host}); err == nil {
+			t.Fatalf("invalid pull registry accepted: %q", host)
+		}
+	}
+	if !validRegistryHost("vpc.invalid:5000") {
+		t.Fatal("registry port rejected")
+	}
+}
+
+func TestPullSecretUsesConfiguredPullRegistry(t *testing.T) {
+	for _, pull := range []string{"", "registry-vpc.invalid"} {
+		a, _ := testApp(t)
+		a.Config.PullRegistry = pull
+		c := credentials()
+		b, err := secretObjects(c, a.Config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var list struct {
+			Items []struct {
+				Metadata   map[string]string
+				StringData map[string]string
+			}
+		}
+		if err := json.Unmarshal(b, &list); err != nil {
+			t.Fatal(err)
+		}
+		var docker map[string]any
+		found := false
+		for _, item := range list.Items {
+			if item.Metadata["name"] != "acs-acr-pull" {
+				continue
+			}
+			found = true
+			if err := json.Unmarshal([]byte(item.StringData[".dockerconfigjson"]), &docker); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !found || len(obj(docker["auths"])) != 1 || at(docker, "auths", a.Config.pullRegistry(), "password") != c.ACR.Password {
+			t.Fatal("pull credentials not scoped to the selected registry")
+		}
+		c.ACR.Address = "unrelated.invalid"
+		if _, err := secretObjects(c, a.Config); err == nil {
+			t.Fatal("unrelated SOPS registry accepted")
+		}
+		c = credentials()
+		c.ACR.Namespace = "unrelated"
+		if _, err := secretObjects(c, a.Config); err == nil {
+			t.Fatal("unrelated SOPS namespace accepted")
+		}
+		a.Config.PullRegistry = "https://invalid.example"
+		if _, err := secretObjects(credentials(), a.Config); err == nil {
+			t.Fatal("invalid hostname entered pull credentials")
+		}
 	}
 }
 
