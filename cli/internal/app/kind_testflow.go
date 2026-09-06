@@ -236,7 +236,7 @@ func readObjects(path string) ([]Obj, error) {
 }
 func (k *Kind) test(ctx context.Context) (result error) {
 	r := &KindReport{Context: kindContext, Started: time.Now().UTC(), Pools: map[string]WorkflowJob{}, Pods: map[string]Obj{}}
-	reportPath := filepath.Join(k.A.Root, "acs-k8s/acs-kind-test-report.md")
+	reportPath := filepath.Join(k.A.Root, "acs-kind-test-report.md")
 	writeReport := func() error {
 		b, e := json.MarshalIndent(r, "", "  ")
 		if e != nil {

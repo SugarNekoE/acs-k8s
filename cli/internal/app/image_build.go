@@ -70,12 +70,12 @@ func prepareImageContext(root, destination string) error {
 			return os.WriteFile(out, data, 0600)
 		})
 	}
-	if err := copyTree(filepath.Join(root, "acs-k8s/cli"), filepath.Join(destination, "cli"), func(rel string) bool {
+	if err := copyTree(filepath.Join(root, "cli"), filepath.Join(destination, "cli"), func(rel string) bool {
 		return rel == "go.mod" || rel == "go.sum" || (strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go")) || strings.HasPrefix(rel, "internal/app/assets/")
 	}); err != nil {
 		return err
 	}
-	if err := copyTree(filepath.Join(root, "acs-k8s/images"), destination, func(rel string) bool { return rel == "Containerfile" || strings.HasPrefix(rel, "rootfs/") }); err != nil {
+	if err := copyTree(filepath.Join(root, "images"), destination, func(rel string) bool { return rel == "Containerfile" || strings.HasPrefix(rel, "rootfs/") }); err != nil {
 		return err
 	}
 	for _, required := range []string{"Containerfile", "cli/go.mod", "cli/cmd/acs/main.go"} {

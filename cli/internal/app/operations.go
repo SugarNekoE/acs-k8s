@@ -127,7 +127,7 @@ func (a *App) bundleCommand(ctx context.Context, args []string) error {
 			data[name] = b
 		}
 		for _, name := range snapshots {
-			if e := atomicWrite(filepath.Join(a.Root, "acs-k8s", name), data[name], 0o644); e != nil {
+			if e := atomicWrite(filepath.Join(a.Root, name), data[name], 0o644); e != nil {
 				return e
 			}
 		}

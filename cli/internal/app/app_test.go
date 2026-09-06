@@ -483,8 +483,9 @@ func TestBuildahCredentialsContextAndCleanup(t *testing.T) {
 
 func TestSnapshotPreReadAndReplacement(t *testing.T) {
 	a, _ := testApp(t)
-	target := filepath.Join(a.Root, "acs-k8s")
-	if err := os.Mkdir(target, 0755); err != nil {
+	target := a.Root
+	a.Config.Bundle = filepath.Join(a.Root, "bundle")
+	if err := os.Mkdir(a.Config.Bundle, 0755); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range snapshots {

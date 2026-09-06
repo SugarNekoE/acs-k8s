@@ -45,7 +45,7 @@ Global options (may appear before or after commands):
   --repo PATH, --config FILE, --context NAME, --system SYSTEM,
   --output-dir PATH, --bundle PATH, --sops-file FILE, --deployment FILE
 
-Defaults: acs-k8s/acs-config.json, then environment overrides, then flags.
+Defaults: acs-config.json, then environment overrides, then flags.
 Cluster commands require an explicit context and use only the SOPS kubeconfig.
 Kind commands use only kind-acs-test and never decrypt ACS credentials.
 Builds never deploy. No sudo. Secrets are never printed.
@@ -213,7 +213,7 @@ func findRoot(explicit string) (string, error) {
 		return "", err
 	}
 	for {
-		if _, e := os.Stat(filepath.Join(p, "acs-k8s/cli/go.mod")); e == nil {
+		if _, e := os.Stat(filepath.Join(p, "cli/go.mod")); e == nil {
 			return p, nil
 		} else if !os.IsNotExist(e) {
 			return "", e
@@ -223,14 +223,14 @@ func findRoot(explicit string) (string, error) {
 		}
 		p = filepath.Dir(p)
 	}
-	return "", errors.New("repository not found; run from the flake repository or pass --repo")
+	return "", errors.New("repository not found; run from the ACS repository or pass --repo")
 }
 func loadConfig(root string, flags map[string]string) (Config, error) {
-	c := Config{System: "x86_64-linux", SOPSFile: "modules/secrets/asnk-forge-runner.yaml", RunnerNamespace: "forgejo-runners", KEDANamespace: "keda"}
+	c := Config{System: "x86_64-linux", RunnerNamespace: "forgejo-runners", KEDANamespace: "keda"}
 	path := flags["config"]
 	explicit := path != ""
 	if path == "" && root != "" {
-		path = filepath.Join(root, "acs-k8s/acs-config.json")
+		path = filepath.Join(root, "acs-config.json")
 	}
 	if path != "" {
 		b, e := os.ReadFile(path)
@@ -276,11 +276,11 @@ func loadConfig(root string, flags map[string]string) (Config, error) {
 	if !filepath.IsAbs(c.Bundle) {
 		c.Bundle = filepath.Join(root, c.Bundle)
 	}
-	if !filepath.IsAbs(c.SOPSFile) {
+	if c.SOPSFile != "" && !filepath.IsAbs(c.SOPSFile) {
 		c.SOPSFile = filepath.Join(root, c.SOPSFile)
 	}
 	if c.DeploymentFile == "" {
-		c.DeploymentFile = "acs-k8s/acs-deployment.json"
+		c.DeploymentFile = "acs-deployment.json"
 	}
 	if !filepath.IsAbs(c.DeploymentFile) {
 		c.DeploymentFile = filepath.Join(root, c.DeploymentFile)
@@ -317,7 +317,7 @@ func (a *App) Dispatch(ctx context.Context, args []string) error {
 		if e := exact(args, 1); e != nil {
 			return e
 		}
-		return a.command(ctx, "nix", "shell", "--inputs-from", "path:.", "nixpkgs#bashInteractive", "nixpkgs#kubectl", "nixpkgs#kubernetes-helm", "nixpkgs#skopeo", "nixpkgs#sops", "nixpkgs#go", "nixpkgs#errcheck", "nixpkgs#buildah", "nixpkgs#crun", "nixpkgs#cacert", "nixpkgs#less", "-c", "bash")
+		return a.command(ctx, "nix", "develop", a.Root, "--command", "bash")
 	case "images":
 		return a.images(ctx, args[1:])
 	case "registry":

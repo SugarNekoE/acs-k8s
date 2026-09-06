@@ -165,7 +165,7 @@ func (a *App) validatePlatform(ctx context.Context) (result error) {
 		return err
 	}
 	for _, name := range snapshots {
-		actual, err := os.ReadFile(filepath.Join(a.Root, "acs-k8s", name))
+		actual, err := os.ReadFile(filepath.Join(a.Root, name))
 		if err != nil {
 			return err
 		}
@@ -205,7 +205,7 @@ func (a *App) validate(ctx context.Context, args []string) error {
 		return a.imageChecks(ctx, paths)
 	case "cli":
 		local := *a
-		local.Root = filepath.Join(a.Root, "acs-k8s/cli")
+		local.Root = filepath.Join(a.Root, "cli")
 		for _, args := range [][]string{{"go", "test", "./..."}, {"go", "vet", "./..."}, {"errcheck", "-blank", "-excludeonly", "./..."}} {
 			if err := local.command(ctx, args...); err != nil {
 				return err

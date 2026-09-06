@@ -14,17 +14,17 @@ import (
 func imageSourceFixture(t *testing.T, root string) {
 	t.Helper()
 	for name, data := range map[string]string{
-		"acs-k8s/cli/go.mod":                             "module example.invalid/cli\ngo 1.26.0\n",
-		"acs-k8s/cli/go.sum":                             "",
-		"acs-k8s/cli/cmd/acs/main.go":                    "package main\nfunc main(){}\n",
-		"acs-k8s/cli/internal/app/assets/fixture.yaml":   "kind: List\nitems: []\n",
-		"acs-k8s/cli/internal/app/secret_test.go":        "synthetic test-only secret",
-		"acs-k8s/cli/internal/app/testdata/fixture.json": "synthetic fixture",
-		"acs-k8s/cli/local-auth.json":                    "must not enter image",
-		"acs-k8s/acs-config.json":                        "synthetic operator configuration",
-		"modules/secrets/synthetic.yaml":                 "synthetic secret",
-		"acs-k8s/images/Containerfile":                   "FROM scratch AS go\n",
-		"acs-k8s/images/rootfs/test.conf":                "public image configuration",
+		"cli/go.mod":                             "module example.invalid/cli\ngo 1.26.0\n",
+		"cli/go.sum":                             "",
+		"cli/cmd/acs/main.go":                    "package main\nfunc main(){}\n",
+		"cli/internal/app/assets/fixture.yaml":   "kind: List\nitems: []\n",
+		"cli/internal/app/secret_test.go":        "synthetic test-only secret",
+		"cli/internal/app/testdata/fixture.json": "synthetic fixture",
+		"cli/local-auth.json":                    "must not enter image",
+		"acs-config.json":                        "synthetic operator configuration",
+		"secrets/synthetic.yaml":                 "synthetic secret",
+		"images/Containerfile":                   "FROM scratch AS go\n",
+		"images/rootfs/test.conf":                "public image configuration",
 	} {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -154,7 +154,7 @@ func TestImageContextExcludesSecretsAndTestData(t *testing.T) {
 	if !slices.Equal(paths, want) {
 		t.Fatalf("unexpected build inputs: %v", paths)
 	}
-	if err := os.Symlink(a.Config.SOPSFile, filepath.Join(a.Root, "acs-k8s/cli/cmd/acs/leak.go")); err != nil {
+	if err := os.Symlink(a.Config.SOPSFile, filepath.Join(a.Root, "cli/cmd/acs/leak.go")); err != nil {
 		t.Fatal(err)
 	}
 	if err := prepareImageContext(a.Root, t.TempDir()); err == nil {

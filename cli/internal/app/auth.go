@@ -49,6 +49,9 @@ func (a *App) withCluster(ctx context.Context, fn func(*Session) error) (result 
 		return errors.New("an explicit --context or configured context is required")
 	}
 	// Never fall back to the ambient KUBECONFIG for ACS operations.
+	if strings.TrimSpace(a.Config.SOPSFile) == "" {
+		return errors.New("configure sops_file or pass --sops-file for the encrypted credential document")
+	}
 	if st, e := os.Stat(a.Config.SOPSFile); e != nil || !st.Mode().IsRegular() || st.Size() == 0 {
 		return errors.New("encrypted SOPS credential file is missing or unreadable")
 	}
