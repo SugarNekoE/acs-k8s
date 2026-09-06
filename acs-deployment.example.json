@@ -4,9 +4,7 @@
     "computeQos": "default"
   },
   "enable": true,
-  "imagePullSecrets": [
-    "acs-acr-pull"
-  ],
+  "imagePullSecrets": ["acs-acr-pull"],
   "keda": {
     "values": {
       "metricsServer": {
@@ -57,29 +55,25 @@
     "docker": {
       "buildah": true,
       "image": "",
-      "labels": [
-        "acs-docker"
-      ],
+      "labels": ["acs-docker"],
       "maxReplicas": 10,
       "resources": {
         "limits": {
           "cpu": "4",
           "ephemeral-storage": "30Gi",
-          "memory": "8Gi"
+          "memory": "16Gi"
         },
         "requests": {
           "cpu": "4",
           "ephemeral-storage": "30Gi",
-          "memory": "8Gi"
+          "memory": "16Gi"
         }
       },
       "runAsUser": 0
     },
     "go": {
       "image": "",
-      "labels": [
-        "acs-go"
-      ],
+      "labels": ["acs-go"],
       "maxReplicas": 10,
       "resources": {
         "limits": {
@@ -96,9 +90,7 @@
     },
     "nix": {
       "image": "",
-      "labels": [
-        "acs-nix"
-      ],
+      "labels": ["acs-nix"],
       "maxReplicas": 10,
       "resources": {
         "limits": {
@@ -116,9 +108,7 @@
     },
     "node24": {
       "image": "",
-      "labels": [
-        "acs-node24"
-      ],
+      "labels": ["acs-node24"],
       "maxReplicas": 10,
       "resources": {
         "limits": {
