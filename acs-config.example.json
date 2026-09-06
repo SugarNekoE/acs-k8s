@@ -6,5 +6,5 @@
   "sops_file": "",
   "runner_namespace": "forgejo-runners",
   "keda_namespace": "keda",
-  "deployment_file": "acs-k8s/acs-deployment.json"
+  "deployment_file": "acs-deployment.json"
 }
