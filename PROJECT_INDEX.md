@@ -41,7 +41,7 @@ tool inside the Nix pool; the root flake packages the CLI and development tools.
 From `cli/`: `go test -race ./...`, `go vet ./...`,
 `errcheck -blank -excludeonly ./...`, and `staticcheck ./...`.
 `nix flake check` builds the CLI and runs these checks on the host system;
-`nix build .#default` produces `result/bin/acs`. Both Linux architectures are
+`nix build .#acs-cli` (also `.#default`) produces `result/bin/acs`. Both Linux architectures are
 packaged; an ARM package build requires an ARM builder or configured emulation.
 All four native amd64 image checks passed before relocation. Full Kind acceptance
 remains pending due to the prior Service-routing blocker; offline tests are not

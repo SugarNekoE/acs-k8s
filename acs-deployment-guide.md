@@ -7,7 +7,7 @@ Source map: [project index](PROJECT_INDEX.md).
 
 ## Setup
 
-`nix build .#default` packages the CLI as `result/bin/acs`; `nix run .#acs -- --help`
+`nix build .#acs-cli` packages the CLI as `result/bin/acs`; `nix run .#acs-cli -- --help`
 runs it directly. `nix develop` (or `acs shell`) provides the CLI and required tools.
 Use `nix flake check` for package tests, race tests and Go analysis. The Forgejo
 workflow builds the default package and uploads it to the `acs-k8s` Cachix cache.
@@ -139,7 +139,7 @@ acs validate cli             # Go tests, vet and errcheck
 acs validate images          # Buildah builds; Go runs isolated container checks
 ```
 
-Use `nix run .#acs -- status` for the latest CLI. Check scaler failures for
+Use `nix run .#acs-cli -- status` for the latest CLI. Check scaler failures for
 PAT/scope/Secret or DNS/TLS errors; image-pull failures for registry permissions;
 pending pods for quotas; restarts for OOM/throttling. Save logs before Job TTL cleanup.
 The Nix pool includes Nix/devenv/cache tools and uses single-user Nix without

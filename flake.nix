@@ -17,8 +17,8 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          acs = pkgs.buildGo126Module {
-            pname = "acs";
+          acs-cli = pkgs.buildGo126Module {
+            pname = "acs-cli";
             version = "0-unstable";
             src = pkgs.lib.fileset.toSource {
               root = ./cli;
@@ -60,30 +60,30 @@
           };
         in
         {
-          inherit acs;
-          default = acs;
+          inherit acs-cli;
+          default = acs-cli;
         }
       );
 
       apps = forAllSystems (
         system:
         let
-          acs = {
+          acs-cli = {
             type = "app";
-            program = "${self.packages.${system}.acs}/bin/acs";
+            program = "${self.packages.${system}.acs-cli}/bin/acs";
             meta.description = "Manage ACS-hosted Forgejo runners";
           };
         in
         {
-          inherit acs;
-          default = acs;
+          inherit acs-cli;
+          default = acs-cli;
         }
       );
 
       checks = forAllSystems (system: {
-        inherit (self.packages.${system}) acs;
-        race = self.packages.${system}.acs.overrideAttrs (old: {
-          pname = "acs-race";
+        inherit (self.packages.${system}) acs-cli;
+        race = self.packages.${system}.acs-cli.overrideAttrs (old: {
+          pname = "acs-cli-race";
           env = old.env // {
             CGO_ENABLED = 1;
           };
@@ -103,7 +103,7 @@
         {
           default = pkgs.mkShell {
             packages = with pkgs; [
-              self.packages.${system}.acs
+              self.packages.${system}.acs-cli
               go_1_26
               errcheck
               go-tools
