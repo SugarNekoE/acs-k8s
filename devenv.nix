@@ -5,6 +5,15 @@
     yaml-language-server
     package-version-server
     vscode-json-languageserver
+    buildah
+    skopeo
+    crun
+    kubernetes-helm
+    kubectl
+    sops
+    errcheck
+    go-tools
+    kind
   ];
 
   languages = {
