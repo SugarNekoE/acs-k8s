@@ -14,6 +14,8 @@ devenv.local.yaml
 /acs-config.local.json
 /acs-deployment.json
 /.output/
+/result
+/result-*
 
 # Go build, test, coverage and profiling artifacts
 /cli/acs
