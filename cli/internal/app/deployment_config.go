@@ -98,7 +98,7 @@ func strictJSON(b []byte, into any) error {
 	return nil
 }
 func runnerDefaults() RunnerConfig {
-	return RunnerConfig{MaxReplicas: 20, PollingInterval: 10, ActiveDeadlineSeconds: 14400, JobTimeoutSeconds: 10800, TTLSecondsAfterFinished: 300, Architecture: "amd64", RunAsUser: 1000,
+	return RunnerConfig{MaxReplicas: 20, PollingInterval: 10, ActiveDeadlineSeconds: 14400, JobTimeoutSeconds: 10800, TTLSecondsAfterFinished: 0, Architecture: "amd64", RunAsUser: 1000,
 		Resources: Resources{Requests: map[string]string{"cpu": "2", "memory": "4Gi", "ephemeral-storage": "30Gi"}, Limits: map[string]string{"cpu": "2", "memory": "4Gi", "ephemeral-storage": "30Gi"}}}
 }
 func (r *RunnerConfig) UnmarshalJSON(b []byte) error {

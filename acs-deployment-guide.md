@@ -82,6 +82,17 @@ For configuration-only updates, repeat bundle build/inspect/snapshots, validatio
 and deployment; rebuild images only when their contents change. Deployment checks
 Secrets, Helm ownership, server validation and readiness. Inspect failures before retrying.
 
+**Finished-run cleanup:** runners register as ephemeral; Forgejo removes their
+registration after receiving a final success/failure result. Finished Kubernetes
+Jobs default to `ttlSecondsAfterFinished: 0`, making both `Complete` and `Failed`
+Jobs eligible for deletion with their Pods. Set this field to `0` in each local
+runner entry if it previously used `300`, then rebuild the bundle and deploy.
+Use a positive TTL to retain Pod logs for debugging. The new template applies to
+new Jobs; existing Jobs retain their original TTL. A running Pod retrying reports
+is not terminal, so TTL cleanup waits for exit or the Job's active deadline.
+Crashes or failures before Forgejo receives a final result can leave a runner
+registration behind; Kubernetes TTL does not remove those Forgejo records.
+
 Outputs use `~/.local/state/acs-forgejo` or `$XDG_STATE_HOME/acs-forgejo`.
 Keep YAML snapshots versioned. Bundle generation uses the embedded pinned KEDA
 chart and local Helm; it does not evaluate Nix or contact a cluster.

@@ -57,6 +57,7 @@
       "image": "",
       "labels": ["acs-docker"],
       "maxReplicas": 10,
+      "ttlSecondsAfterFinished": 0,
       "resources": {
         "limits": {
           "cpu": "4",
@@ -75,6 +76,7 @@
       "image": "",
       "labels": ["acs-go"],
       "maxReplicas": 10,
+      "ttlSecondsAfterFinished": 0,
       "resources": {
         "limits": {
           "cpu": "2",
@@ -92,6 +94,7 @@
       "image": "",
       "labels": ["acs-nix"],
       "maxReplicas": 10,
+      "ttlSecondsAfterFinished": 0,
       "resources": {
         "limits": {
           "cpu": "8",
@@ -110,6 +113,7 @@
       "image": "",
       "labels": ["acs-node24"],
       "maxReplicas": 10,
+      "ttlSecondsAfterFinished": 0,
       "resources": {
         "limits": {
           "cpu": "4",

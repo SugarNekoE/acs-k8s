@@ -172,7 +172,7 @@ items:
                           name: buildah-storage
                         - emptyDir: {}
                           name: buildah-run
-            ttlSecondsAfterFinished: 300
+            ttlSecondsAfterFinished: 0
         maxReplicaCount: 10
         minReplicaCount: 0
         pollingInterval: 10
@@ -338,7 +338,7 @@ items:
                                 - key: token
                                   path: token
                             secretName: acs-forgejo-registration
-            ttlSecondsAfterFinished: 300
+            ttlSecondsAfterFinished: 0
         maxReplicaCount: 10
         minReplicaCount: 0
         pollingInterval: 10
@@ -504,7 +504,7 @@ items:
                                 - key: token
                                   path: token
                             secretName: acs-forgejo-registration
-            ttlSecondsAfterFinished: 300
+            ttlSecondsAfterFinished: 0
         maxReplicaCount: 10
         minReplicaCount: 0
         pollingInterval: 10
@@ -670,7 +670,7 @@ items:
                                 - key: token
                                   path: token
                             secretName: acs-forgejo-registration
-            ttlSecondsAfterFinished: 300
+            ttlSecondsAfterFinished: 0
         maxReplicaCount: 10
         minReplicaCount: 0
         pollingInterval: 10

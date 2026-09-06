@@ -26,6 +26,12 @@ func fixtureDeployment(t *testing.T) DeploymentConfig {
 }
 func TestGoManifestsMatchPreviousNixBundle(t *testing.T) {
 	c := fixtureDeployment(t)
+	// The historical Nix snapshots retained finished Jobs for five minutes.
+	// Keep that explicit input here; current cleanup defaults are tested below.
+	for name, runner := range c.Runners {
+		runner.TTLSecondsAfterFinished = 300
+		c.Runners[name] = runner
+	}
 	m, err := c.render()
 	if err != nil {
 		t.Fatal(err)
@@ -49,6 +55,56 @@ func TestGoManifestsMatchPreviousNixBundle(t *testing.T) {
 			}
 			if !reflect.DeepEqual(av, ev) {
 				t.Fatalf("Go output differs from previous Nix bundle: %s", name)
+			}
+		})
+	}
+}
+
+func TestRunnerCleanupPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name, settings string
+		wantTTL        int
+	}{
+		{name: "default immediate", settings: `{}`, wantTTL: 0},
+		{name: "explicit immediate", settings: `{"ttlSecondsAfterFinished":0}`, wantTTL: 0},
+		{name: "retain for debugging", settings: `{"ttlSecondsAfterFinished":300}`, wantTTL: 300},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := fixtureDeployment(t)
+			var policy RunnerConfig
+			if err := json.Unmarshal([]byte(tc.settings), &policy); err != nil {
+				t.Fatal(err)
+			}
+			for name, runner := range c.Runners {
+				runner.TTLSecondsAfterFinished = policy.TTLSecondsAfterFinished
+				c.Runners[name] = runner
+			}
+			m, err := c.render()
+			if err != nil {
+				t.Fatal(err)
+			}
+			checked := 0
+			for _, resource := range m.Resources {
+				if resource["kind"] != "ScaledJob" {
+					continue
+				}
+				checked++
+				job := obj(at(resource, "spec", "jobTargetRef"))
+				if job["ttlSecondsAfterFinished"] != tc.wantTTL || job["backoffLimit"] != 0 {
+					t.Fatalf("incorrect terminal Job cleanup: %+v", job)
+				}
+				pod := obj(at(job, "template", "spec"))
+				if pod["restartPolicy"] != "Never" || pod["automountServiceAccountToken"] != false {
+					t.Fatal("cleanup must not restart workflows or grant cluster credentials")
+				}
+				init := obj(arr(pod["initContainers"])[0])
+				args, ok := init["args"].([]string)
+				if !ok || len(args) != 1 || !strings.Contains(args[0], "--no-interactive --ephemeral") {
+					t.Fatal("Forgejo cleanup requires ephemeral registration")
+				}
+			}
+			if checked != len(c.Runners) {
+				t.Fatal("missing runner cleanup policy")
 			}
 		})
 	}
