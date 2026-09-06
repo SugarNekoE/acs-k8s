@@ -1,0 +1,10 @@
+{
+  "registry": "",
+  "registry_namespace": "forgejo",
+  "image_system": "x86_64-linux",
+  "context": "",
+  "sops_file": "",
+  "runner_namespace": "forgejo-runners",
+  "keda_namespace": "keda",
+  "deployment_file": "acs-k8s/acs-deployment.json"
+}

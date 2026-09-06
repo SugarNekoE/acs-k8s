@@ -1,0 +1,64 @@
+ARG BUILDPLATFORM
+FROM --platform=${BUILDPLATFORM} docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS cli-build
+ARG TARGETARCH
+WORKDIR /src
+COPY cli/go.mod cli/go.sum ./
+RUN go mod download
+COPY cli/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/acs ./cmd/acs
+
+FROM code.forgejo.org/forgejo/runner:13.1.0@sha256:c4af85fd9f0dd03788676a534781a87c71aa2c6a37737143e017eb94d4312952 AS runner-base
+FROM docker.io/library/node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS node-base
+FROM docker.io/library/golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36 AS go-base
+
+FROM docker.io/nixos/nix:2.34.8@sha256:1a711b619c8a713eff32c3f8d8781b3b4d0130cb91c0a57f67e87abfeeb90b01 AS nix-tools
+# Nix is used inside this stage only to supply the Nix pool's workflow tools.
+RUN mkdir -p /opt && nix --extra-experimental-features "nix-command flakes" --option sandbox false --option build-users-group '' profile install --profile /opt/acs-nix-tools \
+    github:NixOS/nixpkgs/6713828a351efa628b025a1adf7f43cbf8597513#devenv \
+    github:NixOS/nixpkgs/6713828a351efa628b025a1adf7f43cbf8597513#direnv \
+    github:NixOS/nixpkgs/6713828a351efa628b025a1adf7f43cbf8597513#cachix \
+    github:NixOS/nixpkgs/6713828a351efa628b025a1adf7f43cbf8597513#attic-client
+
+FROM registry.fedoraproject.org/fedora:44@sha256:3d020c33fbb50af70acaf673e0e6cad94ccef310e9fce6856112e077a5402117 AS common
+RUN dnf -y install bash coreutils git openssh-clients ca-certificates curl-minimal jq tar gzip xz unzip findutils grep sed gawk python3 libstdc++ shadow-utils \
+    && dnf clean all \
+    && useradd --uid 1000 --user-group --home-dir /data/home --no-create-home runner \
+    && mkdir -p /data/home /data/workspace \
+    && chmod 1777 /tmp \
+    && chown -R 1000:1000 /data
+COPY --from=node-base /usr/local/ /usr/local/
+COPY --from=runner-base /bin/forgejo-runner /usr/local/bin/forgejo-runner
+COPY --from=cli-build /out/acs /usr/local/bin/acs
+ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    HOME=/data/home USER=runner \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt \
+    NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-bundle.crt
+WORKDIR /data
+ENTRYPOINT []
+CMD ["forgejo-runner", "one-job"]
+USER 1000:1000
+
+FROM common AS node24
+
+FROM common AS go
+USER 0:0
+COPY --from=go-base /usr/local/go/ /usr/local/go/
+ENV PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+USER 1000:1000
+
+FROM common AS docker
+USER 0:0
+RUN dnf -y install buildah skopeo crun && dnf clean all \
+    && mkdir -p /var/lib/containers/storage /run/containers/storage \
+    && chown -R 0:0 /data
+COPY rootfs/containers/ /etc/containers/
+ENV USER=root BUILDAH_ISOLATION=chroot STORAGE_DRIVER=vfs
+
+FROM common AS nix
+USER 0:0
+COPY --from=nix-tools /nix/ /nix/
+COPY --from=nix-tools /opt/acs-nix-tools/ /opt/acs-nix-tools/
+COPY rootfs/nix.conf /etc/nix/nix.conf
+RUN chown -R 0:0 /data
+ENV PATH=/opt/acs-nix-tools/bin:/nix/var/nix/profiles/default/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    USER=root NIX_REMOTE=local

@@ -8,3 +8,27 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+
+# Optional workstation settings and repository-local output directory
+/acs-config.json
+/acs-config.local.json
+/acs-deployment.json
+/.output/
+
+# Go build, test, coverage and profiling artifacts
+/cli/acs
+/cli/*.test
+/cli/coverage.out
+/cli/coverage.html
+/cli/*.prof
+
+# Python validation caches
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+# Interrupted atomic snapshot/report writes
+.acs-write-*
+
+# Interrupted image archive exports
+.acs-image-*

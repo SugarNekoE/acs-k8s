@@ -1,0 +1,1 @@
+{"externalSecrets":[],"imagePullSecrets":["acs-acr-pull"],"kedaNamespace":"keda","requiredSecrets":[{"key":"token","name":"acs-forgejo-registration"},{"key":"token","name":"acs-forgejo-scaler"},{"key":".dockerconfigjson","name":"acs-acr-pull"}],"runnerNamespace":"forgejo-runners","scaledJobs":["acs-runner-docker","acs-runner-go","acs-runner-nix","acs-runner-node24"],"version":1}

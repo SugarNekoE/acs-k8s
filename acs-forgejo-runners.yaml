@@ -1,0 +1,690 @@
+apiVersion: v1
+items:
+    - apiVersion: v1
+      automountServiceAccountToken: false
+      kind: ServiceAccount
+      metadata:
+        name: acs-forgejo-runner
+        namespace: forgejo-runners
+    - apiVersion: v1
+      data:
+        config.yaml: '{"cache":{"enabled":false},"container":{"docker_host":"-"},"host":{"workdir_parent":"/data/workspace"},"log":{"level":"info"},"runner":{"capacity":1,"file":"/data/.runner","insecure":false,"labels":["acs-docker:host"],"shutdown_timeout":"25s","timeout":"10800s"}}'
+      kind: ConfigMap
+      metadata:
+        name: acs-runner-docker-config
+        namespace: forgejo-runners
+    - apiVersion: keda.sh/v1alpha1
+      kind: TriggerAuthentication
+      metadata:
+        name: acs-runner-docker
+        namespace: forgejo-runners
+      spec:
+        secretTargetRef:
+            - key: token
+              name: acs-forgejo-scaler
+              parameter: token
+    - apiVersion: keda.sh/v1alpha1
+      kind: ScaledJob
+      metadata:
+        name: acs-runner-docker
+        namespace: forgejo-runners
+      spec:
+        failedJobsHistoryLimit: 3
+        jobTargetRef:
+            activeDeadlineSeconds: 14400
+            backoffLimit: 0
+            completions: 1
+            parallelism: 1
+            template:
+                metadata:
+                    annotations: {}
+                    labels:
+                        alibabacloud.com/compute-class: general-purpose
+                        alibabacloud.com/compute-qos: default
+                        app.kubernetes.io/name: acs-runner-docker
+                spec:
+                    automountServiceAccountToken: false
+                    containers:
+                        - args:
+                            - --config
+                            - /etc/acs-runner/config.yaml
+                            - one-job
+                          command:
+                            - forgejo-runner
+                          env:
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: runner
+                          resources:
+                            limits:
+                                cpu: "4"
+                                ephemeral-storage: 30Gi
+                                memory: 8Gi
+                            requests:
+                                cpu: "4"
+                                ephemeral-storage: 30Gi
+                                memory: 8Gi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                add:
+                                    - CHOWN
+                                    - DAC_OVERRIDE
+                                    - FOWNER
+                                    - FSETID
+                                    - SETGID
+                                    - SETUID
+                                    - SETFCAP
+                                    - SYS_CHROOT
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                            - mountPath: /var/lib/containers
+                              name: buildah-storage
+                            - mountPath: /run/containers
+                              name: buildah-run
+                          workingDir: /data
+                    imagePullSecrets:
+                        - name: acs-acr-pull
+                    initContainers:
+                        - args:
+                            - |
+                              umask 077
+                              mkdir -p /data/home /data/workspace
+                              # Never enable shell tracing: the token must not reach logs.
+                              # The reusable token volume is NOT mounted by the workflow container.
+                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                                --no-interactive --ephemeral \
+                                --instance "$FORGEJO_URL" --name "$POD_NAME" \
+                                --token "$(cat /run/registration/token)"
+                              test -s /data/.runner
+                          command:
+                            - /bin/sh
+                            - -ec
+                          env:
+                            - name: FORGEJO_URL
+                              value: https://forge.asnk.io
+                            - name: POD_NAME
+                              valueFrom:
+                                fieldRef:
+                                    fieldPath: metadata.name
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: register
+                          resources:
+                            limits:
+                                cpu: "1"
+                                memory: 256Mi
+                            requests:
+                                cpu: 100m
+                                memory: 128Mi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                            - mountPath: /run/registration
+                              name: registration-token
+                              readOnly: true
+                          workingDir: /data
+                    nodeSelector:
+                        kubernetes.io/arch: amd64
+                    restartPolicy: Never
+                    securityContext:
+                        fsGroup: 0
+                        runAsGroup: 0
+                        runAsUser: 0
+                        seccompProfile:
+                            type: RuntimeDefault
+                    serviceAccountName: acs-forgejo-runner
+                    terminationGracePeriodSeconds: 30
+                    volumes:
+                        - emptyDir: {}
+                          name: runner-data
+                        - configMap:
+                            name: acs-runner-docker-config
+                          name: runner-config
+                        - name: registration-token
+                          secret:
+                            defaultMode: 288
+                            items:
+                                - key: token
+                                  path: token
+                            secretName: acs-forgejo-registration
+                        - emptyDir: {}
+                          name: buildah-storage
+                        - emptyDir: {}
+                          name: buildah-run
+            ttlSecondsAfterFinished: 300
+        maxReplicaCount: 10
+        minReplicaCount: 0
+        pollingInterval: 10
+        rollout:
+            strategy: gradual
+        scalingStrategy:
+            strategy: accurate
+        successfulJobsHistoryLimit: 1
+        triggers:
+            - authenticationRef:
+                name: acs-runner-docker
+              metadata:
+                address: https://forge.asnk.io
+                global: "true"
+                labels: acs-docker
+              type: forgejo-runner
+    - apiVersion: v1
+      data:
+        config.yaml: '{"cache":{"enabled":false},"container":{"docker_host":"-"},"host":{"workdir_parent":"/data/workspace"},"log":{"level":"info"},"runner":{"capacity":1,"file":"/data/.runner","insecure":false,"labels":["acs-go:host"],"shutdown_timeout":"25s","timeout":"10800s"}}'
+      kind: ConfigMap
+      metadata:
+        name: acs-runner-go-config
+        namespace: forgejo-runners
+    - apiVersion: keda.sh/v1alpha1
+      kind: TriggerAuthentication
+      metadata:
+        name: acs-runner-go
+        namespace: forgejo-runners
+      spec:
+        secretTargetRef:
+            - key: token
+              name: acs-forgejo-scaler
+              parameter: token
+    - apiVersion: keda.sh/v1alpha1
+      kind: ScaledJob
+      metadata:
+        name: acs-runner-go
+        namespace: forgejo-runners
+      spec:
+        failedJobsHistoryLimit: 3
+        jobTargetRef:
+            activeDeadlineSeconds: 14400
+            backoffLimit: 0
+            completions: 1
+            parallelism: 1
+            template:
+                metadata:
+                    annotations: {}
+                    labels:
+                        alibabacloud.com/compute-class: general-purpose
+                        alibabacloud.com/compute-qos: default
+                        app.kubernetes.io/name: acs-runner-go
+                spec:
+                    automountServiceAccountToken: false
+                    containers:
+                        - args:
+                            - --config
+                            - /etc/acs-runner/config.yaml
+                            - one-job
+                          command:
+                            - forgejo-runner
+                          env:
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: runner
+                          resources:
+                            limits:
+                                cpu: "2"
+                                ephemeral-storage: 30Gi
+                                memory: 4Gi
+                            requests:
+                                cpu: "2"
+                                ephemeral-storage: 30Gi
+                                memory: 4Gi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                          workingDir: /data
+                    imagePullSecrets:
+                        - name: acs-acr-pull
+                    initContainers:
+                        - args:
+                            - |
+                              umask 077
+                              mkdir -p /data/home /data/workspace
+                              # Never enable shell tracing: the token must not reach logs.
+                              # The reusable token volume is NOT mounted by the workflow container.
+                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                                --no-interactive --ephemeral \
+                                --instance "$FORGEJO_URL" --name "$POD_NAME" \
+                                --token "$(cat /run/registration/token)"
+                              test -s /data/.runner
+                          command:
+                            - /bin/sh
+                            - -ec
+                          env:
+                            - name: FORGEJO_URL
+                              value: https://forge.asnk.io
+                            - name: POD_NAME
+                              valueFrom:
+                                fieldRef:
+                                    fieldPath: metadata.name
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: register
+                          resources:
+                            limits:
+                                cpu: "1"
+                                memory: 256Mi
+                            requests:
+                                cpu: 100m
+                                memory: 128Mi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                            - mountPath: /run/registration
+                              name: registration-token
+                              readOnly: true
+                          workingDir: /data
+                    nodeSelector:
+                        kubernetes.io/arch: amd64
+                    restartPolicy: Never
+                    securityContext:
+                        fsGroup: 1000
+                        runAsGroup: 1000
+                        runAsUser: 1000
+                        seccompProfile:
+                            type: RuntimeDefault
+                    serviceAccountName: acs-forgejo-runner
+                    terminationGracePeriodSeconds: 30
+                    volumes:
+                        - emptyDir: {}
+                          name: runner-data
+                        - configMap:
+                            name: acs-runner-go-config
+                          name: runner-config
+                        - name: registration-token
+                          secret:
+                            defaultMode: 288
+                            items:
+                                - key: token
+                                  path: token
+                            secretName: acs-forgejo-registration
+            ttlSecondsAfterFinished: 300
+        maxReplicaCount: 10
+        minReplicaCount: 0
+        pollingInterval: 10
+        rollout:
+            strategy: gradual
+        scalingStrategy:
+            strategy: accurate
+        successfulJobsHistoryLimit: 1
+        triggers:
+            - authenticationRef:
+                name: acs-runner-go
+              metadata:
+                address: https://forge.asnk.io
+                global: "true"
+                labels: acs-go
+              type: forgejo-runner
+    - apiVersion: v1
+      data:
+        config.yaml: '{"cache":{"enabled":false},"container":{"docker_host":"-"},"host":{"workdir_parent":"/data/workspace"},"log":{"level":"info"},"runner":{"capacity":1,"file":"/data/.runner","insecure":false,"labels":["acs-nix:host"],"shutdown_timeout":"25s","timeout":"10800s"}}'
+      kind: ConfigMap
+      metadata:
+        name: acs-runner-nix-config
+        namespace: forgejo-runners
+    - apiVersion: keda.sh/v1alpha1
+      kind: TriggerAuthentication
+      metadata:
+        name: acs-runner-nix
+        namespace: forgejo-runners
+      spec:
+        secretTargetRef:
+            - key: token
+              name: acs-forgejo-scaler
+              parameter: token
+    - apiVersion: keda.sh/v1alpha1
+      kind: ScaledJob
+      metadata:
+        name: acs-runner-nix
+        namespace: forgejo-runners
+      spec:
+        failedJobsHistoryLimit: 3
+        jobTargetRef:
+            activeDeadlineSeconds: 14400
+            backoffLimit: 0
+            completions: 1
+            parallelism: 1
+            template:
+                metadata:
+                    annotations: {}
+                    labels:
+                        alibabacloud.com/compute-class: general-purpose
+                        alibabacloud.com/compute-qos: default
+                        app.kubernetes.io/name: acs-runner-nix
+                spec:
+                    automountServiceAccountToken: false
+                    containers:
+                        - args:
+                            - --config
+                            - /etc/acs-runner/config.yaml
+                            - one-job
+                          command:
+                            - forgejo-runner
+                          env:
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: runner
+                          resources:
+                            limits:
+                                cpu: "8"
+                                ephemeral-storage: 30Gi
+                                memory: 16Gi
+                            requests:
+                                cpu: "8"
+                                ephemeral-storage: 30Gi
+                                memory: 16Gi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                          workingDir: /data
+                    imagePullSecrets:
+                        - name: acs-acr-pull
+                    initContainers:
+                        - args:
+                            - |
+                              umask 077
+                              mkdir -p /data/home /data/workspace
+                              # Never enable shell tracing: the token must not reach logs.
+                              # The reusable token volume is NOT mounted by the workflow container.
+                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                                --no-interactive --ephemeral \
+                                --instance "$FORGEJO_URL" --name "$POD_NAME" \
+                                --token "$(cat /run/registration/token)"
+                              test -s /data/.runner
+                          command:
+                            - /bin/sh
+                            - -ec
+                          env:
+                            - name: FORGEJO_URL
+                              value: https://forge.asnk.io
+                            - name: POD_NAME
+                              valueFrom:
+                                fieldRef:
+                                    fieldPath: metadata.name
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: register
+                          resources:
+                            limits:
+                                cpu: "1"
+                                memory: 256Mi
+                            requests:
+                                cpu: 100m
+                                memory: 128Mi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                            - mountPath: /run/registration
+                              name: registration-token
+                              readOnly: true
+                          workingDir: /data
+                    nodeSelector:
+                        kubernetes.io/arch: amd64
+                    restartPolicy: Never
+                    securityContext:
+                        fsGroup: 0
+                        runAsGroup: 0
+                        runAsUser: 0
+                        seccompProfile:
+                            type: RuntimeDefault
+                    serviceAccountName: acs-forgejo-runner
+                    terminationGracePeriodSeconds: 30
+                    volumes:
+                        - emptyDir: {}
+                          name: runner-data
+                        - configMap:
+                            name: acs-runner-nix-config
+                          name: runner-config
+                        - name: registration-token
+                          secret:
+                            defaultMode: 288
+                            items:
+                                - key: token
+                                  path: token
+                            secretName: acs-forgejo-registration
+            ttlSecondsAfterFinished: 300
+        maxReplicaCount: 10
+        minReplicaCount: 0
+        pollingInterval: 10
+        rollout:
+            strategy: gradual
+        scalingStrategy:
+            strategy: accurate
+        successfulJobsHistoryLimit: 1
+        triggers:
+            - authenticationRef:
+                name: acs-runner-nix
+              metadata:
+                address: https://forge.asnk.io
+                global: "true"
+                labels: acs-nix
+              type: forgejo-runner
+    - apiVersion: v1
+      data:
+        config.yaml: '{"cache":{"enabled":false},"container":{"docker_host":"-"},"host":{"workdir_parent":"/data/workspace"},"log":{"level":"info"},"runner":{"capacity":1,"file":"/data/.runner","insecure":false,"labels":["acs-node24:host"],"shutdown_timeout":"25s","timeout":"10800s"}}'
+      kind: ConfigMap
+      metadata:
+        name: acs-runner-node24-config
+        namespace: forgejo-runners
+    - apiVersion: keda.sh/v1alpha1
+      kind: TriggerAuthentication
+      metadata:
+        name: acs-runner-node24
+        namespace: forgejo-runners
+      spec:
+        secretTargetRef:
+            - key: token
+              name: acs-forgejo-scaler
+              parameter: token
+    - apiVersion: keda.sh/v1alpha1
+      kind: ScaledJob
+      metadata:
+        name: acs-runner-node24
+        namespace: forgejo-runners
+      spec:
+        failedJobsHistoryLimit: 3
+        jobTargetRef:
+            activeDeadlineSeconds: 14400
+            backoffLimit: 0
+            completions: 1
+            parallelism: 1
+            template:
+                metadata:
+                    annotations: {}
+                    labels:
+                        alibabacloud.com/compute-class: general-purpose
+                        alibabacloud.com/compute-qos: default
+                        app.kubernetes.io/name: acs-runner-node24
+                spec:
+                    automountServiceAccountToken: false
+                    containers:
+                        - args:
+                            - --config
+                            - /etc/acs-runner/config.yaml
+                            - one-job
+                          command:
+                            - forgejo-runner
+                          env:
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: runner
+                          resources:
+                            limits:
+                                cpu: "4"
+                                ephemeral-storage: 30Gi
+                                memory: 8Gi
+                            requests:
+                                cpu: "4"
+                                ephemeral-storage: 30Gi
+                                memory: 8Gi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                          workingDir: /data
+                    imagePullSecrets:
+                        - name: acs-acr-pull
+                    initContainers:
+                        - args:
+                            - |
+                              umask 077
+                              mkdir -p /data/home /data/workspace
+                              # Never enable shell tracing: the token must not reach logs.
+                              # The reusable token volume is NOT mounted by the workflow container.
+                              timeout 120 forgejo-runner --config /etc/acs-runner/config.yaml register \
+                                --no-interactive --ephemeral \
+                                --instance "$FORGEJO_URL" --name "$POD_NAME" \
+                                --token "$(cat /run/registration/token)"
+                              test -s /data/.runner
+                          command:
+                            - /bin/sh
+                            - -ec
+                          env:
+                            - name: FORGEJO_URL
+                              value: https://forge.asnk.io
+                            - name: POD_NAME
+                              valueFrom:
+                                fieldRef:
+                                    fieldPath: metadata.name
+                            - name: HOME
+                              value: /data/home
+                          image: crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0
+                          imagePullPolicy: IfNotPresent
+                          name: register
+                          resources:
+                            limits:
+                                cpu: "1"
+                                memory: 256Mi
+                            requests:
+                                cpu: 100m
+                                memory: 128Mi
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            capabilities:
+                                drop:
+                                    - ALL
+                            privileged: false
+                          volumeMounts:
+                            - mountPath: /data
+                              name: runner-data
+                            - mountPath: /etc/acs-runner
+                              name: runner-config
+                              readOnly: true
+                            - mountPath: /run/registration
+                              name: registration-token
+                              readOnly: true
+                          workingDir: /data
+                    nodeSelector:
+                        kubernetes.io/arch: amd64
+                    restartPolicy: Never
+                    securityContext:
+                        fsGroup: 1000
+                        runAsGroup: 1000
+                        runAsUser: 1000
+                        seccompProfile:
+                            type: RuntimeDefault
+                    serviceAccountName: acs-forgejo-runner
+                    terminationGracePeriodSeconds: 30
+                    volumes:
+                        - emptyDir: {}
+                          name: runner-data
+                        - configMap:
+                            name: acs-runner-node24-config
+                          name: runner-config
+                        - name: registration-token
+                          secret:
+                            defaultMode: 288
+                            items:
+                                - key: token
+                                  path: token
+                            secretName: acs-forgejo-registration
+            ttlSecondsAfterFinished: 300
+        maxReplicaCount: 10
+        minReplicaCount: 0
+        pollingInterval: 10
+        rollout:
+            strategy: gradual
+        scalingStrategy:
+            strategy: accurate
+        successfulJobsHistoryLimit: 1
+        triggers:
+            - authenticationRef:
+                name: acs-runner-node24
+              metadata:
+                address: https://forge.asnk.io
+                global: "true"
+                labels: acs-node24
+              type: forgejo-runner
+kind: List

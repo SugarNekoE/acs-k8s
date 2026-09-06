@@ -1,0 +1,142 @@
+{
+  "aliyun": {
+    "computeClass": "general-purpose",
+    "computeQos": "default"
+  },
+  "enable": true,
+  "imagePullSecrets": [
+    "acs-acr-pull"
+  ],
+  "keda": {
+    "values": {
+      "metricsServer": {
+        "replicaCount": 1
+      },
+      "operator": {
+        "replicaCount": 1
+      },
+      "resources": {
+        "metricServer": {
+          "limits": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          },
+          "requests": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          }
+        },
+        "operator": {
+          "limits": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          },
+          "requests": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          }
+        },
+        "webhooks": {
+          "limits": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          },
+          "requests": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          }
+        }
+      },
+      "webhooks": {
+        "replicaCount": 1
+      }
+    }
+  },
+  "namespace": "forgejo-runners",
+  "runners": {
+    "docker": {
+      "buildah": true,
+      "image": "crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-docker:runner-13.1.0",
+      "labels": [
+        "acs-docker"
+      ],
+      "maxReplicas": 10,
+      "resources": {
+        "limits": {
+          "cpu": "4",
+          "ephemeral-storage": "30Gi",
+          "memory": "8Gi"
+        },
+        "requests": {
+          "cpu": "4",
+          "ephemeral-storage": "30Gi",
+          "memory": "8Gi"
+        }
+      },
+      "runAsUser": 0
+    },
+    "go": {
+      "image": "crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-go:runner-13.1.0",
+      "labels": [
+        "acs-go"
+      ],
+      "maxReplicas": 10,
+      "resources": {
+        "limits": {
+          "cpu": "2",
+          "ephemeral-storage": "30Gi",
+          "memory": "4Gi"
+        },
+        "requests": {
+          "cpu": "2",
+          "ephemeral-storage": "30Gi",
+          "memory": "4Gi"
+        }
+      }
+    },
+    "nix": {
+      "image": "crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-nix:runner-13.1.0",
+      "labels": [
+        "acs-nix"
+      ],
+      "maxReplicas": 10,
+      "resources": {
+        "limits": {
+          "cpu": "8",
+          "ephemeral-storage": "30Gi",
+          "memory": "16Gi"
+        },
+        "requests": {
+          "cpu": "8",
+          "ephemeral-storage": "30Gi",
+          "memory": "16Gi"
+        }
+      },
+      "runAsUser": 0
+    },
+    "node24": {
+      "image": "crpi-1u9nmrh29ouue3ym.cn-hongkong.personal.cr.aliyuncs.com/asnk-forge/forgejo-runner-node24:runner-13.1.0",
+      "labels": [
+        "acs-node24"
+      ],
+      "maxReplicas": 10,
+      "resources": {
+        "limits": {
+          "cpu": "4",
+          "ephemeral-storage": "30Gi",
+          "memory": "8Gi"
+        },
+        "requests": {
+          "cpu": "4",
+          "ephemeral-storage": "30Gi",
+          "memory": "8Gi"
+        }
+      }
+    }
+  },
+  "scope": {
+    "type": "global"
+  },
+  "url": "https://forge.asnk.io",
+  "version": 1
+}

@@ -1,0 +1,57 @@
+acsForgejoManaged: true
+metricsServer:
+    replicaCount: 1
+operator:
+    name: keda-operator
+    replicaCount: 1
+permissions:
+    operator:
+        restrict:
+            allowAllServiceAccountTokenCreation: false
+            namesAllowList:
+                - acs-forgejo-scaler
+            secret: false
+            serviceAccountTokenCreationRoles: []
+podLabels:
+    keda:
+        alibabacloud.com/compute-class: general-purpose
+        alibabacloud.com/compute-qos: default
+    metricsAdapter:
+        alibabacloud.com/compute-class: general-purpose
+        alibabacloud.com/compute-qos: default
+    webhooks:
+        alibabacloud.com/compute-class: general-purpose
+        alibabacloud.com/compute-qos: default
+rbac:
+    aggregateToDefaultRoles: false
+    create: true
+    enabledCustomScaledRefKinds: false
+resources:
+    metricServer:
+        limits:
+            cpu: 250m
+            memory: 512Mi
+        requests:
+            cpu: 250m
+            memory: 512Mi
+    operator:
+        limits:
+            cpu: 250m
+            memory: 512Mi
+        requests:
+            cpu: 250m
+            memory: 512Mi
+    webhooks:
+        limits:
+            cpu: 250m
+            memory: 512Mi
+        requests:
+            cpu: 250m
+            memory: 512Mi
+serviceAccount:
+    operator:
+        create: true
+        name: keda-operator
+watchNamespace: forgejo-runners
+webhooks:
+    replicaCount: 1
