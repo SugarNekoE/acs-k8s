@@ -1,6 +1,7 @@
 # ACS deployment quick guide
 
-Run from the repository root as your normal user. Install Buildah, Skopeo, Helm,
+Run as your normal user from this checkout or an operator directory containing
+`acs-config.json` and `acs-deployment.json`. Install Buildah, Skopeo, Helm,
 kubectl and SOPS; image builds need working rootless user namespaces. Deployment settings:
 `acs-deployment.json`, created from the [example](acs-deployment.example.json).
 Source map: [project index](PROJECT_INDEX.md).
@@ -28,7 +29,16 @@ Match local registry settings to the deployment image references, and `context`
 to an exact SOPS kubeconfig context. Both local JSON files are ignored by Git and
 read on each command. The deployment example leaves all runner images empty;
 fill them before building a bundle. Keep the example files versioned.
-Use `--config FILE` for another profile or `--repo PATH` outside this checkout.
+The installed CLI works outside the checkout. `--config FILE` resolves relative
+settings beside that file; `--repo PATH` overrides the working directory.
+Otherwise, the CLI uses the nearest parent with ACS config/deployment or sources,
+falling back to the current directory. Source commands (`images build/publish`,
+`validate cli`, `validate images`, `shell`, and Kind commands that build images)
+need the ACS checkout, for example:
+
+```bash
+acs --repo /mnt/data/Projects/acs-k8s images build go
+```
 
 The SOPS document contains `kubeconfig` (complete YAML as a string),
 `forgejo.registration-token`, `forgejo.scaler-token`, and

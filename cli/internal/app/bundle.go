@@ -204,6 +204,9 @@ func (a *App) validate(ctx context.Context, args []string) error {
 		}
 		return a.imageChecks(ctx, paths)
 	case "cli":
+		if err := a.requireSourceFiles("validate cli", "cli/go.mod"); err != nil {
+			return err
+		}
 		local := *a
 		local.Root = filepath.Join(a.Root, "cli")
 		for _, args := range [][]string{{"go", "test", "./..."}, {"go", "vet", "./..."}, {"errcheck", "-blank", "-excludeonly", "./..."}} {

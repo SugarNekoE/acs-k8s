@@ -46,6 +46,8 @@ Global options (may appear before or after commands):
   --output-dir PATH, --bundle PATH, --sops-file FILE, --deployment FILE
 
 Defaults: acs-config.json, then environment overrides, then flags.
+Paths use --repo, the --config directory, or the nearest ACS directory/current directory.
+Image builds, validate cli and shell require their source files in --repo.
 Cluster commands require an explicit context and use only the SOPS kubeconfig.
 Kind commands use only kind-acs-test and never decrypt ACS credentials.
 Builds never deploy. No sudo. Secrets are never printed.
@@ -156,7 +158,15 @@ func Run(ctx context.Context, args []string, in io.Reader, out, stderr io.Writer
 		err := a.Dispatch(ctx, command)
 		return errors.Join(err, a.outputErr)
 	}
-	root, err := findRoot(flags["repo"])
+	base := flags["repo"]
+	if base == "" && flags["config"] != "" {
+		configPath, err := filepath.Abs(flags["config"])
+		if err != nil {
+			return err
+		}
+		base = filepath.Dir(configPath)
+	}
+	root, err := findRoot(base)
 	if err != nil {
 		return err
 	}
@@ -212,18 +222,46 @@ func findRoot(explicit string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	info, err := os.Stat(p)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("ACS working directory is not a directory: %s", p)
+	}
+	if explicit != "" {
+		return p, nil
+	}
+	start := p
 	for {
-		if _, e := os.Stat(filepath.Join(p, "cli/go.mod")); e == nil {
-			return p, nil
-		} else if !os.IsNotExist(e) {
-			return "", e
+		for _, marker := range []string{"acs-config.json", "acs-deployment.json", "cli/go.mod"} {
+			if info, err := os.Stat(filepath.Join(p, marker)); err == nil {
+				if info.Mode().IsRegular() {
+					return p, nil
+				}
+			} else if !os.IsNotExist(err) {
+				return "", err
+			}
 		}
-		if explicit != "" || filepath.Dir(p) == p {
+		if filepath.Dir(p) == p {
 			break
 		}
 		p = filepath.Dir(p)
 	}
-	return "", errors.New("repository not found; run from the ACS repository or pass --repo")
+	return start, nil
+}
+
+func (a *App) requireSourceFiles(command string, paths ...string) error {
+	for _, path := range paths {
+		info, err := os.Stat(filepath.Join(a.Root, path))
+		if err != nil {
+			return fmt.Errorf("%s requires %s in the ACS checkout; pass --repo PATH: %w", command, path, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("%s requires a regular %s file in the ACS checkout; pass --repo PATH", command, path)
+		}
+	}
+	return nil
 }
 func loadConfig(root string, flags map[string]string) (Config, error) {
 	c := Config{System: "x86_64-linux", RunnerNamespace: "forgejo-runners", KEDANamespace: "keda"}
@@ -316,6 +354,9 @@ func (a *App) Dispatch(ctx context.Context, args []string) error {
 	case "shell":
 		if e := exact(args, 1); e != nil {
 			return e
+		}
+		if err := a.requireSourceFiles("shell", "flake.nix", "cli/go.mod"); err != nil {
+			return err
 		}
 		return a.command(ctx, "nix", "develop", a.Root, "--command", "bash")
 	case "images":

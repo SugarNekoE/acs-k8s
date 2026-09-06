@@ -26,8 +26,10 @@ tool inside the Nix pool; the root flake packages the CLI and development tools.
 
 ## Standalone layout
 
-- Run from this root or pass `--repo PATH`. Config, deployment, snapshots and
-  Kind reports resolve here; Go sources live directly under `cli/`.
+- The installed CLI also runs from an operator directory without sources.
+  Paths use `--repo`, the `--config` file's directory, or the nearest ACS
+  directory (falling back to the current directory). Go sources live in `cli/`;
+  image builds, CLI validation and the tooling shell need the ACS checkout.
 - Set `sops_file` explicitly to an existing encrypted document. `acs shell`
   opens this root's flake development shell, including from subdirectories.
 - Local operator/deployment JSON files are currently absent. Use the examples

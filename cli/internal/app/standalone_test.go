@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -20,15 +22,21 @@ func TestStandaloneRootDiscovery(t *testing.T) {
 			t.Fatalf("findRoot from %s = %q, %v", dir, got, err)
 		}
 	}
-	t.Chdir(t.TempDir())
+	outside := t.TempDir()
+	t.Chdir(outside)
 	if got, err := findRoot(root); err != nil || got != root {
 		t.Fatalf("explicit root = %q, %v", got, err)
 	}
-	if _, err := findRoot(""); err == nil {
-		t.Fatal("accepted unrelated directory")
+	if got, err := findRoot(""); err != nil || got != outside {
+		t.Fatalf("operator directory = %q, %v", got, err)
 	}
-	if _, err := findRoot(filepath.Join(root, "cli")); err == nil {
-		t.Fatal("explicit --repo silently searched parent")
+	if got, err := findRoot(filepath.Join(root, "cli")); err != nil || got != filepath.Join(root, "cli") {
+		t.Fatalf("explicit directory silently searched parent: %q, %v", got, err)
+	}
+	for _, path := range []string{filepath.Join(root, "missing"), filepath.Join(root, "cli/go.mod")} {
+		if _, err := findRoot(path); err == nil {
+			t.Fatalf("accepted invalid directory %s", path)
+		}
 	}
 }
 
@@ -60,6 +68,68 @@ func TestStandaloneConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestInstalledCLIWithoutCheckout(t *testing.T) {
+	for _, key := range []string{"ACR", "ACR_NAMESPACE", "IMAGE_SYSTEM", "CTX", "ACS_SOPS_FILE", "ACS_DEPLOYMENT_FILE", "ACS_OUTPUT_DIR", "ACS_BUNDLE", "ACS_RUNNER_NAMESPACE", "ACS_KEDA_NAMESPACE"} {
+		t.Setenv(key, "")
+	}
+	out := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", out)
+	flake := t.TempDir()
+	mustWrite(t, filepath.Join(flake, "flake.nix"), "{}")
+	operator := t.TempDir()
+	settings := `{"context":"configured","sops_file":"credentials.yaml","output_dir":".output"}`
+	mustWrite(t, filepath.Join(operator, "profile.json"), settings)
+	mustWrite(t, filepath.Join(operator, "acs-config.json"), settings)
+	subdir := filepath.Join(operator, "reports")
+	if err := os.Mkdir(subdir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, cwd, root string
+		flags           []string
+		configured      bool
+	}{
+		{name: "unrelated flake", cwd: flake, root: flake},
+		{name: "operator directory", cwd: operator, root: operator, configured: true},
+		{name: "operator subdirectory", cwd: subdir, root: operator, configured: true},
+		{name: "absolute profile", cwd: flake, root: operator, flags: []string{"--config", filepath.Join(operator, "profile.json")}, configured: true},
+		{name: "relative profile", cwd: subdir, root: operator, flags: []string{"--config", "../profile.json"}, configured: true},
+		{name: "explicit operator directory", cwd: flake, root: operator, flags: []string{"--repo", operator}, configured: true},
+		{name: "repo overrides profile directory", cwd: flake, root: flake, flags: []string{"--repo", flake, "--config", filepath.Join(operator, "profile.json")}, configured: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(tc.cwd)
+			var stdout bytes.Buffer
+			args := append(append([]string{}, tc.flags...), "config", "show")
+			if err := Run(t.Context(), args, nil, &stdout, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			var c Config
+			if err := json.Unmarshal(stdout.Bytes(), &c); err != nil {
+				t.Fatal(err)
+			}
+			if c.DeploymentFile != filepath.Join(tc.root, "acs-deployment.json") {
+				t.Fatalf("wrong operator root: %+v", c)
+			}
+			if tc.configured && (c.Context != "configured" || c.SOPSFile != filepath.Join(tc.root, "credentials.yaml") || c.Bundle != filepath.Join(tc.root, ".output/bundle")) {
+				t.Fatalf("profile paths not resolved: %+v", c)
+			}
+		})
+	}
+}
+
+func TestSourceCommandsFailBeforeExternalTools(t *testing.T) {
+	for _, command := range [][]string{{"shell"}, {"validate", "cli"}, {"images", "build", "go"}} {
+		a, r := testApp(t)
+		// An unrelated workstation flake must not be opened as the ACS shell.
+		mustWrite(t, filepath.Join(a.Root, "flake.nix"), "{}")
+		err := a.Dispatch(t.Context(), command)
+		if err == nil || !strings.Contains(err.Error(), "ACS checkout") || !strings.Contains(err.Error(), "--repo") || len(r.calls) != 0 {
+			t.Fatalf("source guard for %v: %v, calls: %v", command, err, r.calls)
+		}
+	}
+}
+
 func TestUnsetSOPSPathStopsBeforeExternalTools(t *testing.T) {
 	a, r := testApp(t)
 	a.Config.SOPSFile = ""
@@ -70,6 +140,8 @@ func TestUnsetSOPSPathStopsBeforeExternalTools(t *testing.T) {
 
 func TestStandaloneToolWorkingDirectories(t *testing.T) {
 	a, r := testApp(t)
+	imageSourceFixture(t, a.Root)
+	mustWrite(t, filepath.Join(a.Root, "flake.nix"), "{}")
 	if err := a.Dispatch(t.Context(), []string{"shell"}); err != nil {
 		t.Fatal(err)
 	}

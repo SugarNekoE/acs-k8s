@@ -94,6 +94,9 @@ func (a *App) buildImage(ctx context.Context, pool, archive string) (result erro
 	if _, err = selectPools([]string{pool}); err != nil {
 		return err
 	}
+	if err = a.requireSourceFiles("images build", "cli/go.mod", "images/Containerfile"); err != nil {
+		return err
+	}
 	work, err := privateDir("acs-image-build-")
 	if err != nil {
 		return err
