@@ -7,7 +7,7 @@ repository root, inside `nix develop` or `devenv shell`.
 To add tools to an existing image, edit its stage, extend its smoke test in
 [`workflow.go`](../cli/internal/app/workflow.go), then follow the build/check and
 publish steps below with that image name. To reuse an existing image for another
-workflow label, follow [Add a pool](../acs-deployment-guide.md#pools-and-containers).
+workflow label, follow [Change pools](../docs/operations.md#change-pools).
 
 ## 1. Add a Containerfile target
 
@@ -82,7 +82,7 @@ the registry/namespace in local operator JSON, and use separate push credentials
 
 `images publish` rebuilds before pushing; keep the checked source unchanged.
 For ACS VPC pulls, configure `pull_registry` in operator settings as described in
-the [deployment guide](../acs-deployment-guide.md#setup). Publishing stays on
+the [VPC setup reference](../docs/operations.md#vpc-image-pulls). Publishing stays on
 `registry`; generated runner manifests use the pull endpoint with the same digest.
 Add this entry under `runners` in local `acs-deployment.json`, using the published
 digest instead of the placeholder:
