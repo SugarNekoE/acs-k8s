@@ -19,7 +19,8 @@ tool inside the Nix pool; the root flake packages the CLI and development tools.
 | [Image guide](images/README.md) | Add an image target, wire CLI checks, build, publish and connect a pool |
 | [Operator example](acs-config.example.json) | Template for ignored `acs-config.json` |
 | [Deployment example](acs-deployment.example.json) | Template for ignored `acs-deployment.json`; fill image references |
-| [Deployment guide](acs-deployment-guide.md) | Setup, deployment, pools and troubleshooting |
+| [Deployment guide](acs-deployment-guide.md) | Quick setup and deployment commands |
+| [Operations reference](docs/operations.md) | Credentials, VPC pulls, pool changes, cleanup and troubleshooting |
 | [devenv.nix](devenv.nix), [devenv.yaml](devenv.yaml) | Go development environment and hooks |
 | [flake.nix](flake.nix), [flake.lock](flake.lock) | Linux CLI packages, checks and tooling shell |
 | [Forgejo cache workflow](.forgejo/workflows/cache.yaml) | Check/build the default package and upload to Cachix |
