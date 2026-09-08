@@ -61,7 +61,16 @@ func (a *App) workflow(ctx context.Context, args []string) (result error) {
 		if e = a.command(ctx, "nix", "--version"); e != nil {
 			return e
 		}
-		expr := `derivation { name = "acs-cli-smoke"; system = builtins.currentSystem; builder = "/bin/sh"; args = [ "-c" "echo acs-ok > $out" ]; }`
+		expr := fmt.Sprintf(`derivation {
+  name = %q;
+  system = builtins.currentSystem;
+  builder = "/bin/sh";
+  PATH = "/usr/bin:/bin";
+  args = [ "-c" "mkdir -p $out; echo acs-ok > $out/proof" ];
+  outputHashMode = "recursive";
+  outputHashAlgo = "sha256";
+  outputHash = "sha256-kEjd2OZq3ORn+B2RqvO6bOZ7Nat1f1H6s0UFHwJIhzQ=";
+}`, filepath.Base(work))
 		file := filepath.Join(work, "smoke.nix")
 		if e = os.WriteFile(file, []byte(expr), 0o600); e != nil {
 			return e
@@ -70,7 +79,7 @@ func (a *App) workflow(ctx context.Context, args []string) (result error) {
 		if e != nil {
 			return e
 		}
-		value, e := os.ReadFile(strings.TrimSpace(string(b)))
+		value, e := os.ReadFile(filepath.Join(strings.TrimSpace(string(b)), "proof"))
 		if e != nil {
 			return e
 		}

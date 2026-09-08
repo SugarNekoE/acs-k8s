@@ -189,37 +189,51 @@ func TestImageContextExcludesSecretsAndTestData(t *testing.T) {
 }
 
 func TestImageCheckUsesNativeRuntimeAndCleansUp(t *testing.T) {
-	for _, failRun := range []bool{false, true} {
-		a, r := testApp(t)
-		var output bytes.Buffer
-		a.Out = &output
-		r.run = func(in Invocation) ([]byte, error) {
-			if in.Args[0] != "buildah" {
-				t.Fatal("non-Buildah image check")
-			}
-			if in.Args[1] == "inspect" {
-				return encoded(t, map[string]any{"OCIv1": map[string]any{"architecture": "amd64", "config": map[string]any{"User": "1000:1000", "WorkingDir": "/data", "Cmd": []string{"forgejo-runner", "one-job"}}}}), nil
-			}
-			if in.Args[1] == "run" {
-				if !slices.Contains(in.Args, "--network") || !slices.Contains(in.Args, "none") || !slices.Contains(in.Args, "--cap-drop") || !slices.Contains(in.Args, "ALL") {
-					t.Fatal("image test did not isolate network/capabilities")
-				}
-				if failRun {
-					return nil, errors.New("runtime failed")
-				}
-				if slices.Contains(in.Args, "id") || slices.Contains(in.Args, "stat") {
-					return []byte("1000\n"), nil
-				}
-				return []byte("Run only one job --wait --ephemeral"), nil
-			}
-			return nil, nil
+	for _, pool := range []string{"go", "nix", "node24", "docker"} {
+		user, uid := "1000:1000", "1000"
+		if pool == "nix" || pool == "docker" {
+			user, uid = "0:0", "0"
 		}
-		err := a.imageCheck(t.Context(), "synthetic.tar", "go")
-		if (err != nil) != failRun {
-			t.Fatal(err)
-		}
-		if r.calls[len(r.calls)-1].Args[1] != "rm" {
-			t.Fatal("temporary container was not cleaned")
+		for _, failRun := range []bool{false, true} {
+			a, r := testApp(t)
+			var output bytes.Buffer
+			a.Out = &output
+			r.run = func(in Invocation) ([]byte, error) {
+				if in.Args[0] != "buildah" {
+					t.Fatal("non-Buildah image check")
+				}
+				if in.Args[1] == "inspect" {
+					return encoded(t, map[string]any{"OCIv1": map[string]any{"architecture": "amd64", "config": map[string]any{"User": user, "WorkingDir": "/data", "Cmd": []string{"forgejo-runner", "one-job"}}}}), nil
+				}
+				if in.Args[1] == "run" {
+					if !slices.Contains(in.Args, "--network") || !slices.Contains(in.Args, "none") || !slices.Contains(in.Args, "--cap-drop") || !slices.Contains(in.Args, "ALL") {
+						t.Fatal("image test did not isolate network/capabilities")
+					}
+					capIndex := slices.Index(in.Args, "--cap-add")
+					if pool == "nix" {
+						if capIndex < 0 || in.Args[capIndex+1] != "DAC_OVERRIDE" {
+							t.Fatal("Nix image test must retain DAC_OVERRIDE")
+						}
+					} else if capIndex >= 0 {
+						t.Fatalf("%s image test unexpectedly gained capabilities", pool)
+					}
+					if failRun {
+						return nil, errors.New("runtime failed")
+					}
+					if slices.Contains(in.Args, "id") || slices.Contains(in.Args, "stat") {
+						return []byte(uid + "\n"), nil
+					}
+					return []byte("Run only one job --wait --ephemeral"), nil
+				}
+				return nil, nil
+			}
+			err := a.imageCheck(t.Context(), "synthetic.tar", pool)
+			if (err != nil) != failRun {
+				t.Fatal(err)
+			}
+			if r.calls[len(r.calls)-1].Args[1] != "rm" {
+				t.Fatal("temporary container was not cleaned")
+			}
 		}
 	}
 }

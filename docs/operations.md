@@ -101,6 +101,15 @@ timeouts, permissions or image-pull errors. Temporarily retain failed Jobs with
 `ttlSecondsAfterFinished: 300`. Check scaler errors for PAT/scope or DNS/TLS
 problems, pending Pods for quotas, and restarts for OOM/throttling.
 
+A Nix error renaming `/nix/store/tmp-…/x` into a final store path with
+`Permission denied` can result from dropping `DAC_OVERRIDE`. The generated
+`nix` pool restores that capability only for its workflow container, because
+Nix runs locally as root and moves read-only fixed-output directories. Rebuild
+the CLI, regenerate the bundle and deploy it so new runner Jobs receive the
+capability; existing Jobs retain their old security settings. The permission
+fix needs no image rebuild. Rebuild the Nix image to include the updated
+`acs workflow test nix` smoke test, which checks a fresh fixed-output directory.
+
 For live workflow smoke tests, use `runs-on: acs-go` with
 `run: acs workflow test go`; substitute `nix` or `node24` as needed. The Buildah
 test uses `acs-docker`, `acs workflow test docker`, workflow variables `ACR` and

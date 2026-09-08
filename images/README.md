@@ -65,8 +65,12 @@ go -C cli build -o ../.output/acs ./cmd/acs
 
 These commands build and check locally. Run as your normal user with working
 rootless Buildah storage and registry configuration. Image checks execute the
-actual filesystem with networking disabled and all capabilities dropped. For
-ARM64, build and check on a native ARM64 host with `--system aarch64-linux`.
+actual filesystem with networking disabled and all capabilities dropped except
+`DAC_OVERRIDE` for Nix. The Nix workflow container needs this capability to move
+read-only fixed-output directories into its local store; its registration
+container retains no capabilities. The Nix smoke test builds a fresh fixed-output
+directory to verify that operation. For ARM64, build and check on a native ARM64
+host with `--system aarch64-linux`.
 Run `nix flake check` for race tests and static analysis as well.
 
 ## 4. Publish and connect a pool

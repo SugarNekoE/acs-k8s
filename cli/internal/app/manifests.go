@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// This is the pod's small registration adapter, not operator orchestration.
-// It preserves the established runner invocation and private .runner permissions.
 const registrationScript = `umask 077
 mkdir -p /data/home /data/workspace
 # Never enable shell tracing: the token must not reach logs.
@@ -130,6 +128,8 @@ func (c DeploymentConfig) render() (Manifests, error) {
 			obj(main["securityContext"])["capabilities"] = Obj{"drop": []string{"ALL"}, "add": []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID", "SETGID", "SETUID", "SETFCAP", "SYS_CHROOT"}}
 			main["volumeMounts"] = append(baseMounts(), Obj{"name": "buildah-storage", "mountPath": "/var/lib/containers"}, Obj{"name": "buildah-run", "mountPath": "/run/containers"})
 			volumes = append(volumes, Obj{"name": "buildah-storage", "emptyDir": Obj{}}, Obj{"name": "buildah-run", "emptyDir": Obj{}})
+		} else if name == "nix" {
+			obj(main["securityContext"])["capabilities"] = Obj{"drop": []string{"ALL"}, "add": []string{"DAC_OVERRIDE"}}
 		}
 		pulls := []any{}
 		for _, secret := range c.ImagePullSecrets {
@@ -158,8 +158,6 @@ func (c DeploymentConfig) render() (Manifests, error) {
 			trigger["owner"] = r.Scope.Owner
 			trigger["repo"] = r.Scope.Repo
 		}
-		// Forgejo's queue endpoint includes waiting AND running tasks. Subtract
-		// every unfinished Kubernetes Job, not just pods that are still pending.
 		spec := Obj{"minReplicaCount": 0, "maxReplicaCount": r.MaxReplicas, "pollingInterval": r.PollingInterval, "successfulJobsHistoryLimit": 1, "failedJobsHistoryLimit": 3, "rollout": Obj{"strategy": "gradual"}, "scalingStrategy": Obj{"strategy": "default"},
 			"jobTargetRef": Obj{"parallelism": 1, "completions": 1, "backoffLimit": 0, "activeDeadlineSeconds": r.ActiveDeadlineSeconds, "ttlSecondsAfterFinished": r.TTLSecondsAfterFinished, "template": Obj{"metadata": Obj{"labels": labels, "annotations": annotations}, "spec": pod}},
 			"triggers":     []any{Obj{"type": "forgejo-runner", "metadata": trigger, "authenticationRef": Obj{"name": resourceName}}}}

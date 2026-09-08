@@ -121,7 +121,7 @@ func TestGoManifestsMatchPreviousNixBundle(t *testing.T) {
 			}
 			if name == "acs-forgejo-runners.yaml" {
 				// Preserve the historical fixture, allowing only the intentional
-				// scheduler and empty-poll behavior changes in today's manifests.
+				// scheduler, empty-poll and Nix capability changes in today's manifests.
 				for _, item := range arr(at(obj(ev), "items")) {
 					resource := obj(item)
 					if resource["kind"] != "ScaledJob" {
@@ -131,6 +131,9 @@ func TestGoManifestsMatchPreviousNixBundle(t *testing.T) {
 					spec["scalingStrategy"] = Obj{"strategy": "default"}
 					pod := obj(at(spec, "jobTargetRef", "template", "spec"))
 					main := obj(arr(pod["containers"])[0])
+					if at(resource, "metadata", "name") == "acs-runner-nix" {
+						obj(at(main, "securityContext", "capabilities"))["add"] = []any{"DAC_OVERRIDE"}
+					}
 					main["args"] = append(arr(main["args"]), "--wait")
 					init := obj(arr(pod["initContainers"])[0])
 					init["args"] = []any{registrationScript}
@@ -141,6 +144,43 @@ func TestGoManifestsMatchPreviousNixBundle(t *testing.T) {
 				t.Fatalf("Go output differs from previous Nix bundle: %s", name)
 			}
 		})
+	}
+}
+
+func TestNixRunnerCapabilities(t *testing.T) {
+	c := fixtureDeployment(t)
+	for _, config := range []DeploymentConfig{c, c.kindConfig()} {
+		m, err := config.render()
+		if err != nil {
+			t.Fatal(err)
+		}
+		objects, err := canonicalObjects(m.Resources)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, resource := range objects {
+			if resource["kind"] != "ScaledJob" {
+				continue
+			}
+			name := str(at(resource, "metadata", "name"))
+			pod := obj(at(resource, "spec", "jobTargetRef", "template", "spec"))
+			main := obj(arr(pod["containers"])[0])
+			init := obj(arr(pod["initContainers"])[0])
+			if len(arr(at(init, "securityContext", "capabilities", "add"))) != 0 {
+				t.Fatalf("%s registration gained capabilities", name)
+			}
+			caps := arr(at(main, "securityContext", "capabilities", "add"))
+			switch name {
+			case "acs-runner-nix":
+				if !reflect.DeepEqual(caps, []any{"DAC_OVERRIDE"}) {
+					t.Fatalf("Nix requires only DAC_OVERRIDE, got %v", caps)
+				}
+			case "acs-runner-go", "acs-runner-node24":
+				if len(caps) != 0 {
+					t.Fatalf("%s gained capabilities: %v", name, caps)
+				}
+			}
+		}
 	}
 }
 

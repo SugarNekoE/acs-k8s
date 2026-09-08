@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-// Image checks import the archive and run its actual filesystem and environment
-// through Buildah, with networking disabled and all capabilities dropped.
 func (a *App) imageChecks(ctx context.Context, archives []string) error {
 	for i, pool := range []string{"go", "node24", "docker", "nix"} {
 		if err := a.imageCheck(ctx, archives[i], pool); err != nil {
@@ -75,7 +73,11 @@ func (a *App) imageCheck(ctx context.Context, archive, pool string) (result erro
 		return errors.New("image user, working directory or runner entrypoint is incorrect")
 	}
 	run := func(capture bool, command ...string) ([]byte, error) {
-		args := []string{"buildah", "run", "--network", "none", "--cap-drop", "ALL", "--user", expectedUser, name, "--"}
+		args := []string{"buildah", "run", "--network", "none", "--cap-drop", "ALL"}
+		if pool == "nix" {
+			args = append(args, "--cap-add", "DAC_OVERRIDE")
+		}
+		args = append(args, "--user", expectedUser, name, "--")
 		return a.call(ctx, append(args, command...), nil, capture, false, nil)
 	}
 	for _, command := range [][]string{{"/usr/bin/env", "bash", "-c", "echo env-shebang-ok"}, {"forgejo-runner", "--version"}, {"acs", "--help"}, {"acs", "workflow", "image-test", pool}} {

@@ -461,6 +461,8 @@ items:
                           securityContext:
                             allowPrivilegeEscalation: false
                             capabilities:
+                                add:
+                                    - DAC_OVERRIDE
                                 drop:
                                     - ALL
                             privileged: false
