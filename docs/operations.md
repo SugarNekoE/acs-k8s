@@ -110,6 +110,15 @@ capability; existing Jobs retain their old security settings. The permission
 fix needs no image rebuild. Rebuild the Nix image to include the updated
 `acs workflow test nix` smoke test, which checks a fresh fixed-output directory.
 
+If Nix reports that `/homeless-shelter` exists, an earlier unsandboxed build
+created its placeholder home directory. Go's local telemetry uses
+`$HOME/.config/go/telemetry` unless `XDG_CONFIG_HOME` is set. This project's
+flake sets `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` under `$TMPDIR` in `preBuild`,
+which `buildGoModule` also inherits for dependency vendoring. Other Go flakes
+on this runner need the same build-local configuration. Rerun CI in a fresh
+runner Job after updating the flake; no runner deployment or image rebuild is
+needed for this change.
+
 For live workflow smoke tests, use `runs-on: acs-go` with
 `run: acs workflow test go`; substitute `nix` or `node24` as needed. The Buildah
 test uses `acs-docker`, `acs workflow test docker`, workflow variables `ACR` and

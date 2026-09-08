@@ -43,9 +43,12 @@
               pkgs.go-tools
               pkgs.kubernetes-helm
             ];
+            preBuild = ''
+              export XDG_CONFIG_HOME="$TMPDIR/config"
+              export XDG_CACHE_HOME="$TMPDIR/cache"
+            '';
             checkPhase = ''
               runHook preCheck
-              export XDG_CACHE_HOME="$TMPDIR/cache"
               go test ./...
               go vet ./...
               errcheck -blank -excludeonly ./...
