@@ -23,7 +23,7 @@ tool inside the Nix pool; the root flake packages the CLI and development tools.
 | [Operations reference](docs/operations.md) | Credentials, VPC pulls, pool changes, cleanup and troubleshooting |
 | [devenv.nix](devenv.nix), [devenv.yaml](devenv.yaml) | Go development environment and hooks |
 | [flake.nix](flake.nix), [flake.lock](flake.lock) | Linux CLI packages, checks and tooling shell |
-| [Forgejo cache workflow](.forgejo/workflows/cache.yaml) | Check/build the default package and upload to Cachix |
+| [Forgejo cache workflow](.forgejo/workflows/cache.yaml) | Check/build the default package and upload to Cachix and niks3 (`amber.asnk.io`, Forgejo OIDC) |
 
 ## Standalone layout
 
